@@ -14,21 +14,18 @@ type DragProps = {
 };
 
 const Drag: React.FC<DragProps> = ({ dragType, dragSrc, children }) => {
-  const extendedProps = {
-    draggable: true,
-    "data-drag-src": JSON.stringify(dragSrc),
-    onDragStart: onDragStart(dragType),
-  };
-
-  const childrenWithProps = React.Children.map(children, (child) => {
-    let newChild = child;
-    if (React.isValidElement(child)) {
-      newChild = React.cloneElement(child, extendedProps);
-    }
-    return newChild;
-  });
-
-  return <>{childrenWithProps}</>;
+  const dragSrcString = JSON.stringify(dragSrc);
+  
+  return (
+    <div
+      draggable
+      data-drag-src={dragSrcString}
+      onDragStart={onDragStart(dragType)}
+      style={{ display: "inline-block", cursor: "grab" }}
+    >
+      {children}
+    </div>
+  );
 };
 
 export default Drag;

@@ -9,16 +9,21 @@ type DropProps = {
 const Drop: React.FC<DropProps> = ({ callback, targetDOMElement }) => {
   useEffect(() => {
     if (!targetDOMElement) {
-      console.log("pup");
       return;
     }
-    targetDOMElement.addEventListener("dragover", (e) => {
+    const handleDragOver = (e: DragEvent) => {
       onDragOver("copy")(e);
-    });
-    targetDOMElement.addEventListener("drop", (e) => {
+    };
+    const handleDrop = (e: DragEvent) => {
       onDrop(callback)(e);
-    });
-  }, [targetDOMElement]);
+    };
+    targetDOMElement.addEventListener("dragover", handleDragOver);
+    targetDOMElement.addEventListener("drop", handleDrop);
+    return () => {
+      targetDOMElement.removeEventListener("dragover", handleDragOver);
+      targetDOMElement.removeEventListener("drop", handleDrop);
+    };
+  }, [targetDOMElement, callback]);
   return <></>;
 };
 

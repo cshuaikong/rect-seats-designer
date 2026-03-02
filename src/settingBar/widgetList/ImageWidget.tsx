@@ -122,14 +122,16 @@ const ImageThumbnail: React.FC<{
             : `/assets/image/${data.src}`,
         }}
       >
-        <Figure.Image
-          alt={data.name}
-          src={
-            data.src.startsWith("data:")
-              ? data.src
-              : `/assets/image/${data.src}`
-          }
-        />
+        <div>
+          <Figure.Image
+            alt={data.name}
+            src={
+              data.src.startsWith("data:")
+                ? data.src
+                : `/assets/image/${data.src}`
+            }
+          />
+        </div>
       </Drag>
       <Figure.Caption
         className={[

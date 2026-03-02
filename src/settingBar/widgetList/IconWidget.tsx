@@ -80,10 +80,12 @@ const IconThumbnail: React.FC<{
         ...data,
       }}
     >
-      <Figure.Image
-        alt={data.icon}
-        src={`/assets/icon/bootstrap/${data.icon}`}
-      />
+      <div>
+        <Figure.Image
+          alt={data.icon}
+          src={`/assets/icon/bootstrap/${data.icon}`}
+        />
+      </div>
     </Drag>
     {/* <Figure.Caption
         className={[fontStyles.fontHalf1em, "text-center"].join(" ")}

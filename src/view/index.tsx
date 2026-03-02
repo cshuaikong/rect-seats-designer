@@ -239,9 +239,14 @@ const View: React.FC<ViewProps> = ({
   }, [setStateSizeToFitIn]);
 
   useEffect(() => {
-    if (stageRef.current) {
-      setContainer(stageRef.current!.container());
-    }
+    const checkStageRef = () => {
+      if (stageRef.current) {
+        setContainer(stageRef.current!.container());
+      } else {
+        setTimeout(checkStageRef, 100);
+      }
+    };
+    checkStageRef();
   }, []);
 
   return (

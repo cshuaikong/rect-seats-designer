@@ -46,10 +46,12 @@ const FrameThumbnail: React.FC<{ maxPx: number; data: FrameKind }> = ({
           width,
           height,
         }}>
-        <Figure.Image
-          alt={`${width} X ${height}`}
-          data-src={`holder.js/${size.width}x${size.height}?bg=e3e6e8&fg=ffffff&size=7&text=${width} \nX\n ${height}&amp;nowrap=true`}
-        />
+        <div>
+          <Figure.Image
+            alt={`${width} X ${height}`}
+            data-src={`holder.js/${size.width}x${size.height}?bg=e3e6e8&fg=ffffff&size=7&text=${width} \nX\n ${height}&amp;nowrap=true`}
+          />
+        </div>
       </Drag>
       <Figure.Caption
         className={[fontStyles.font075em, sizeStyles.width100, "text-center"].join(" ")}>
