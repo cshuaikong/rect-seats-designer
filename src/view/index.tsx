@@ -1,349 +1,324 @@
-import React, { useCallback, useEffect, useState } from "react";
-import Konva from "konva";
-import { KonvaEventObject, Node, NodeConfig } from "konva/lib/Node";
-import { useHotkeys } from "react-hotkeys-hook";
-import { IRect, Vector2d } from "konva/lib/types";
-import { Provider, ReactReduxContext } from "react-redux";
-import { Layer, Rect, Stage } from "react-konva";
-import { decimalUpToSeven } from "../util/decimalUpToSeven";
-import Drop from "../util/Drop";
-import positionStyles from "../style/position.module.css";
-import { ITEMS_CONTEXT } from "../hook/useItem";
-import useDragAndDrop from "../hook/useDragAndDrop";
-import useStage, { STAGE_POSITION, STAGE_SCALE } from "../hook/useStage";
-import useLocalStorage from "../hook/useLocalStorage";
+import { Stage, Layer, Line, Ellipse, Rect } from "react-konva";
+import React, { PropsWithChildren, useEffect, useRef, useCallback, useMemo } from "react";
+import { Stage as StageType } from "konva/lib/Stage";
+import { Node, NodeConfig, KonvaEventObject } from "konva/lib/Node";
+import { PreviewRect, DrawToolMode } from "../hook/useDrawTools";
+import { SeatDrawMode, SeatData } from "../types/seat";
+import { Circle as SeatCircle, Text as SeatText } from "react-konva";
 
-type ViewProps = {
-  onSelect: ITEMS_CONTEXT["onSelect"];
-  stage: ReturnType<typeof useStage>;
-  children: React.ReactNode;
-};
+interface ViewProps extends PropsWithChildren {
+  onSelect?: (
+    e?: KonvaEventObject<MouseEvent>,
+    itemList?: Node<NodeConfig>[],
+  ) => void;
+  stage: { stageRef: React.MutableRefObject<any> },
+  drawMode: DrawToolMode;
+  seatDrawMode?: SeatDrawMode;
+  previewRect: PreviewRect | null;
+  previewSeats?: SeatData[];
+  seatStartPoint?: { x: number; y: number } | null;
+  polygonPoints: { x: number; y: number }[];
+  polygonTempPoint: { x: number; y: number } | null;
+  onDrawMouseDown?: (e: KonvaEventObject<MouseEvent>) => void;
+  onDrawMouseMove?: (e: KonvaEventObject<MouseEvent>) => void;
+  onDrawMouseUp?: (e?: KonvaEventObject<MouseEvent>) => void;
+  onDrawDoubleClick?: (e: KonvaEventObject<MouseEvent>) => void;
+  onDrawContextMenu?: (e: KonvaEventObject<MouseEvent>) => void;
+  cursor?: string;
+}
 
-const View: React.FC<ViewProps> = ({
-  children,
+export default function View({
   onSelect,
-  stage: { stageRef, dragBackgroundOrigin },
-}) => {
-  const { onDropOnStage } = useDragAndDrop(stageRef, dragBackgroundOrigin);
-  const [container, setContainer] = useState<HTMLDivElement>();
-  const { setValue } = useLocalStorage();
-
-  const setStateSizeToFitIn = useCallback(() => {
-    if (!stageRef.current || !stageRef.current.container().parentElement) {
-      return;
-    }
-    const { width, height } = stageRef.current.container().parentElement!.getBoundingClientRect();
-    stageRef.current.width(width);
-    stageRef.current.height(height);
-    stageRef.current.batchDraw();
-  }, [stageRef]);
-
-  const zoomOnWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
-    e.evt.preventDefault();
-    const stage = stageRef.current;
-    if (!stage) {
-      return;
-    }
-    const zoomDirection = e.evt.deltaY > 0 ? 1 : -1;
+  children,
+  stage,
+  drawMode,
+  seatDrawMode = 'idle',
+  previewRect,
+  previewSeats = [],
+  seatStartPoint,
+  polygonPoints,
+  polygonTempPoint,
+  onDrawMouseDown,
+  onDrawMouseMove,
+  onDrawMouseUp,
+  onDrawDoubleClick,
+  onDrawContextMenu,
+  cursor = 'default',
+}: ViewProps) {
+  const { stageRef } = stage;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragCurrentRef = useRef<{ x: number; y: number } | null>(null);
+  const stageConfig = useMemo(
+    () => ({
+      width: Math.max(window.innerWidth - 410, 1280),
+      height: Math.max(window.innerHeight - 140, 760),
+      draggable: drawMode === 'idle' && seatDrawMode === 'idle',
+      x: Math.max(Math.ceil(window.innerWidth - 410 - 1280) / 2, 0),
+      y: Math.max(Math.ceil(window.innerHeight - 140 - 760) / 2, 0),
+      scale: {
+        x: 1,
+        y: 1,
+      },
+    }),
+    [drawMode, seatDrawMode],
+  );
+  const wheelEventHandler = (e: WheelEvent) => {
+    e.preventDefault();
     const scaleBy = 1.1;
-    const oldScale = stage.scaleX();
-
-    const pointer = stage.getPointerPosition();
-
-    if (!pointer) {
-      return;
-    }
-
+    const _stage = stageRef.current;
+    if (!_stage) return;
+    const oldScale = _stage.scaleX();
     const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
+      x:
+        _stage.getPointerPosition()!.x / oldScale
+        - _stage.x() / oldScale,
+      y:
+        _stage.getPointerPosition()!.y / oldScale
+        - _stage.y() / oldScale,
     };
 
-    const newScale = zoomDirection > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    const newScale = e.deltaY > 0 ? oldScale * scaleBy : oldScale / scaleBy;
 
-    stage.scale({ x: newScale, y: newScale });
-    setValue(STAGE_SCALE, { x: newScale, y: newScale });
+    _stage.scale({ x: newScale, y: newScale });
 
     const newPos = {
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
+      x:
+        -(mousePointTo.x - _stage.getPointerPosition()!.x / newScale)
+        * newScale,
+      y:
+        -(mousePointTo.y - _stage.getPointerPosition()!.y / newScale)
+        * newScale,
     };
-    stage.position(newPos);
-    setValue(STAGE_POSITION, newPos);
-  }, []);
-
-  const resetZoom = useCallback(() => {
-    const stage = stageRef.current;
-    if (!stage) {
-      return;
-    }
-    stage.scale({ x: 1, y: 1 });
-    stage.position({ x: 0, y: 0 });
-    setValue(STAGE_POSITION, { x: 0, y: 0 });
-    setValue(STAGE_SCALE, { x: 1, y: 1 });
-  }, []);
-
-  const moveStage = useCallback(() => {
-    const stage = stageRef.current;
-    if (!stage || !stage.container().parentElement || !dragBackgroundOrigin.current) {
-      return;
-    }
-    stage.on("mousemove", (e) => {
-      if (e.evt.which !== 1) {
-        return;
-      }
-      const currentMousePos = stage.getPointerPosition();
-      if (!currentMousePos) {
-        return;
-      }
-      if (dragBackgroundOrigin.current.x === 0 && dragBackgroundOrigin.current.y === 0) {
-        dragBackgroundOrigin.current = currentMousePos!;
-        return;
-      }
-      const newPos = {
-        x: decimalUpToSeven(stage.x() + (currentMousePos!.x - dragBackgroundOrigin.current.x)),
-        y: decimalUpToSeven(stage.y() + (currentMousePos!.y - dragBackgroundOrigin.current.y)),
-      };
-      stage.position(newPos);
-      setValue(STAGE_POSITION, newPos);
-      dragBackgroundOrigin.current = currentMousePos!;
-    });
-    stage.on("mouseup", (e) => {
-      dragBackgroundOrigin.current = { x: 0, y: 0 };
-      if (!stageRef.current?.draggable()) {
-        stage.removeEventListener("mousemove");
-        stage.removeEventListener("mouseup");
-      }
-    });
-    stageRef.current?.draggable(true);
-  }, []);
-
-  const onSelectEmptyBackground = useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
-      e.target.getType() === "Stage" && onSelect(e);
-    },
-    [onSelect],
-  );
-
-  const onMouseDownOnStage = useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
-      onSelectEmptyBackground(e);
-      const stage = e.target.getStage();
-      if (!stage) {
-        return;
-      }
-      const selectBox = stage.findOne(".select-box");
-      const scaledCurrentMousePos = getScaledMousePosition(stage, e.evt);
-      const currentMousePos = stage.getPointerPosition();
-      selectBox.position(scaledCurrentMousePos);
-      if (stage.getAllIntersections(currentMousePos).length || stageRef.current?.draggable()) {
-        selectBox.visible(false);
-        return;
-      }
-      selectBox.visible(true);
-    },
-    [onSelectEmptyBackground],
-  );
-
-  const onMouseMoveOnStage = (e: KonvaEventObject<MouseEvent>) => {
-    if (e.evt.which === 1) {
-      const stage = e.target.getStage();
-      if (!stage) {
-        return;
-      }
-      const selectBox = stage.findOne(".select-box");
-      if (!selectBox.visible()) {
-        return;
-      }
-      const currentMousePos = getScaledMousePosition(stage, e.evt);
-      const origin = selectBox.position();
-      const size = selectBox.size();
-      const adjustedRectInfo = getOriginFromTwoPoint(origin, currentMousePos, size);
-      selectBox.position({
-        x: adjustedRectInfo.x,
-        y: adjustedRectInfo.y,
-      });
-      selectBox.size({
-        width: adjustedRectInfo.width,
-        height: adjustedRectInfo.height,
-      });
-      selectBox.getStage()?.batchDraw();
-    }
+    _stage.position(newPos);
+    _stage.batchDraw();
   };
 
-  const onMouseUpOnStage = useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
-      const stage = e.target.getStage();
-      if (!stage) {
-        return;
-      }
-      const selectBox = stage.findOne(".select-box");
-      const overlapItems: Node<NodeConfig>[] = getItemsInBoundary(stage, selectBox)
-        ? getItemsInBoundary(stage, selectBox)!
-          .map((_item) =>
-            _item.attrs["data-item-type"] === "frame"
-              ? _item.getParent().getChildren() ?? []
-              : _item,
-          )
-          .flat()
-          .filter((_item) => _item.className !== "Label")
-        : [];
+  const handleMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    const target = e.target;
+    const _stage = target.getStage();
+    if (!_stage) return;
 
-      selectBox.visible(false);
-      selectBox.position({
-        x: 0,
-        y: 0,
-      });
-      selectBox.size({
-        width: 0,
-        height: 0,
-      });
-      selectBox.getLayer()?.batchDraw();
-      overlapItems?.length && onSelect(undefined, overlapItems);
-    },
-    [onSelect],
-  );
+    // 座位绘制模式 - 直接传递事件
+    if (seatDrawMode !== 'idle' && onDrawMouseDown) {
+      onDrawMouseDown(e);
+      return;
+    }
 
-  useHotkeys(
-    "space",
-    (e) => {
-      moveStage();
-    },
-    { keydown: true, enabled: !stageRef.current?.draggable() },
-    [stageRef.current, moveStage],
-  );
+    // 形状绘制模式
+    if (drawMode !== 'idle' && onDrawMouseDown) {
+      onDrawMouseDown(e);
+      return;
+    }
 
-  useHotkeys(
-    "space",
-    (e) => {
-      stageRef.current?.draggable(false);
-      stageRef.current?.fire("mouseup");
-    },
-    { keyup: true },
-    [stageRef.current, moveStage],
-  );
+    // 普通选择模式
+    if (target === _stage) {
+      onSelect?.(e);
+    }
+  }, [drawMode, seatDrawMode, onDrawMouseDown, onSelect, stage]);
 
-  useHotkeys(
-    "ctrl+0",
-    (e) => {
-      resetZoom();
-    },
-    {},
-    [stageRef.current, resetZoom],
-  );
+  const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    if (seatDrawMode !== 'idle' && onDrawMouseMove) {
+      onDrawMouseMove(e);
+      return;
+    }
+    if (drawMode !== 'idle' && onDrawMouseMove) {
+      onDrawMouseMove(e);
+    }
+  }, [drawMode, seatDrawMode, onDrawMouseMove]);
+
+  const handleMouseUp = useCallback(() => {
+    if ((drawMode !== 'idle' || seatDrawMode !== 'idle') && onDrawMouseUp) {
+      onDrawMouseUp();
+    }
+  }, [drawMode, seatDrawMode, onDrawMouseUp]);
+
+  const handleDoubleClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    if ((drawMode !== 'idle' || seatDrawMode !== 'idle') && onDrawDoubleClick) {
+      onDrawDoubleClick(e);
+    }
+  }, [drawMode, seatDrawMode, onDrawDoubleClick]);
+
+  const handleContextMenu = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    e.evt.preventDefault();
+    if ((drawMode !== 'idle' || seatDrawMode !== 'idle') && onDrawContextMenu) {
+      onDrawContextMenu(e);
+    }
+  }, [drawMode, seatDrawMode, onDrawContextMenu]);
 
   useEffect(() => {
-    window.addEventListener("load", setStateSizeToFitIn);
-    window.addEventListener("resize", setStateSizeToFitIn);
-    return () => window.removeEventListener("resize", setStateSizeToFitIn);
-  }, [setStateSizeToFitIn]);
-
-  useEffect(() => {
-    const checkStageRef = () => {
-      if (stageRef.current) {
-        setContainer(stageRef.current!.container());
-      } else {
-        setTimeout(checkStageRef, 100);
-      }
-    };
-    checkStageRef();
+    if (containerRef.current) {
+      containerRef.current.addEventListener("wheel", wheelEventHandler, {
+        passive: false,
+      });
+    }
   }, []);
+
+  // 全局鼠标事件监听（用于绘制模式）
+  useEffect(() => {
+    if (drawMode !== 'idle' || seatDrawMode !== 'idle') {
+      const handleGlobalMouseUp = () => {
+        if (onDrawMouseUp) {
+          onDrawMouseUp();
+        }
+      };
+      
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      return () => {
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+      };
+    }
+  }, [drawMode, seatDrawMode, onDrawMouseUp]);
+
+  // 渲染多边形预览点
+  const renderPolygonPreview = useMemo(() => {
+    if (polygonPoints.length === 0 && !polygonTempPoint) return null;
+
+    const elements = [];
+    
+    // 渲染已有点
+    polygonPoints.forEach((point, index) => {
+      // 顶点标记
+      elements.push(
+        <Rect
+          key={`polygon-point-${index}`}
+          x={point.x - 4}
+          y={point.y - 4}
+          width={8}
+          height={8}
+          fill={index === 0 ? "#4CAF50" : "#2196F3"}
+          stroke="white"
+          strokeWidth={2}
+        />
+      );
+    });
+
+    // 渲染连线
+    if (polygonPoints.length >= 2) {
+      const linePoints = [];
+      for (let i = 0; i < polygonPoints.length; i++) {
+        linePoints.push(polygonPoints[i].x, polygonPoints[i].y);
+      }
+      // 添加临时点形成最后一条线
+      if (polygonTempPoint) {
+        linePoints.push(polygonTempPoint.x, polygonTempPoint.y);
+      }
+
+      elements.push(
+        <Line
+          key="polygon-lines"
+          points={linePoints}
+          stroke="#2196F3"
+          strokeWidth={2}
+          dash={[5, 5]}
+        />
+      );
+    }
+
+    return elements;
+  }, [polygonPoints, polygonTempPoint]);
 
   return (
-    <ReactReduxContext.Consumer>
-      {({ store }) => (
-        <Stage
-          ref={stageRef}
-          width={window.innerWidth * 0.8}
-          height={window.innerHeight * 0.8}
-          draggable={false}
-          onWheel={zoomOnWheel}
-          onMouseDown={onMouseDownOnStage}
-          onMouseMove={onMouseMoveOnStage}
-          onMouseUp={onMouseUpOnStage}
-          className={[positionStyles.absolute, positionStyles.top0, positionStyles.left0].join(
-            " ",
-          )}>
-          <Provider store={store}>
-            <Layer>
-              {children}
-              <Rect
-                name="select-box"
-                x={0}
-                y={0}
-                width={0}
-                height={0}
-                fill="skyblue"
-                opacity={0.4}
-                visible={false}
+    <div className="position-relative" ref={containerRef}>
+      <Stage
+        className="position-relative"
+        style={{
+          background: "#f5f5f5",
+          overflow: "hidden",
+          cursor: cursor,
+        }}
+        ref={stageRef}
+        {...stageConfig}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onDblClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
+      >
+        <Layer>
+          {/* 拖拽预览 - 矩形 */}
+          {previewRect && drawMode === 'rectangle' && previewRect.visible && (
+            <Rect
+              x={previewRect.x}
+              y={previewRect.y}
+              width={previewRect.width}
+              height={previewRect.height}
+              fill="rgba(76, 175, 80, 0.3)"
+              stroke="#4CAF50"
+              strokeWidth={2}
+            />
+          )}
+          
+          {/* 拖拽预览 - 椭圆 */}
+          {previewRect && drawMode === 'ellipse' && previewRect.visible && (
+            <Ellipse
+              x={previewRect.x + previewRect.width / 2}
+              y={previewRect.y + previewRect.height / 2}
+              radiusX={Math.abs(previewRect.width / 2)}
+              radiusY={Math.abs(previewRect.height / 2)}
+              fill="rgba(33, 150, 243, 0.3)"
+              stroke="#2196F3"
+              strokeWidth={2}
+            />
+          )}
+
+          {/* 多边形预览 */}
+          {renderPolygonPreview}
+          
+          {/* 座位起点标记 */}
+          {seatDrawMode !== 'idle' && seatStartPoint && (
+            <>
+              <SeatCircle
+                x={seatStartPoint.x}
+                y={seatStartPoint.y}
+                radius={8}
+                fill="#FF5722"
+                stroke="#fff"
+                strokeWidth={2}
               />
-            </Layer>
-            {container ? <Drop callback={onDropOnStage} targetDOMElement={container} /> : null}
-          </Provider>
-        </Stage>
-      )}
-    </ReactReduxContext.Consumer>
+              <SeatText
+                x={seatStartPoint.x - 20}
+                y={seatStartPoint.y - 25}
+                text="起点"
+                fontSize={12}
+                fontFamily="Arial"
+                fill="#FF5722"
+              />
+            </>
+          )}
+          
+          {/* 座位预览 */}
+          {seatDrawMode !== 'idle' && previewSeats.map((seat) => (
+            <React.Fragment key={`preview-seat-${seat.id}`}>
+              <SeatCircle
+                x={seat.x}
+                y={seat.y}
+                radius={seat.radius || 12}
+                fill={seat.id === 'start-point' ? "#FF5722" : "rgba(76, 175, 80, 0.5)"}
+                stroke={seat.id === 'start-point' ? "#fff" : "#4CAF50"}
+                strokeWidth={2}
+                dash={seat.id === 'start-point' ? undefined : [3, 3]}
+              />
+              {seat.id !== 'start-point' && (
+                <SeatText
+                  x={seat.x - (seat.radius || 12)}
+                  y={seat.y - (seat.radius || 12)}
+                  width={(seat.radius || 12) * 2}
+                  height={(seat.radius || 12) * 2}
+                  text={seat.seatNumber}
+                  fontSize={(seat.radius || 12) * 0.8}
+                  fontFamily="Arial"
+                  fill="#fff"
+                  align="center"
+                  verticalAlign="middle"
+                  listening={false}
+                />
+              )}
+            </React.Fragment>
+          ))}
+        </Layer>
+        <Layer>{children}</Layer>
+      </Stage>
+    </div>
   );
-};
-
-export default View;
-
-export const getScaledMousePosition = (stage: Konva.Stage, e: DragEvent | MouseEvent) => {
-  stage.setPointersPositions(e);
-  const stageOrigin = stage.getAbsolutePosition();
-  const mousePosition = stage.getPointerPosition();
-  if (mousePosition) {
-    return {
-      x: decimalUpToSeven((mousePosition.x - stageOrigin.x) / stage.scaleX()),
-      y: decimalUpToSeven((mousePosition.y - stageOrigin.y) / stage.scaleY()),
-    };
-  }
-  return {
-    x: 0,
-    y: 0,
-  };
-};
-
-export const getItemsInBoundary = (stage: Konva.Stage, targetItem: Konva.Node) => {
-  const boundary = targetItem.getClientRect({ relativeTo: stage.getLayer() });
-  const result = targetItem
-    .getLayer()
-    ?.getChildren((item: Konva.Node) => {
-      if (item.name() === "select-box") {
-        return false;
-      }
-      const itemBoundary = item.getClientRect({ relativeTo: stage.getLayer() });
-      return (
-        boundary.x <= itemBoundary.x
-        && boundary.y <= itemBoundary.y
-        && boundary.x + boundary.width >= itemBoundary.x + itemBoundary.width
-        && boundary.y + boundary.height >= itemBoundary.y + itemBoundary.height
-      );
-    })
-    .map((item) => {
-      if (item.name() === "label-group") {
-        return (item as Konva.Group).findOne(".label-target") ?? null;
-      }
-      return item;
-    })
-    .filter(Boolean);
-  return result;
-};
-
-export const getOriginFromTwoPoint = (
-  p1: Vector2d,
-  p2: Vector2d,
-  size: { width: number; height: number },
-): IRect => {
-  const result: IRect = {
-    x: p1.x,
-    y: p1.y,
-    width: size.width,
-    height: size.height,
-  };
-  result.x = p1.x;
-  result.y = p1.y;
-  result.width = p2.x - p1.x;
-  result.height = p2.y - p1.y;
-  return result;
-};
+}

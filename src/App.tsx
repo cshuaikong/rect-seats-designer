@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Transformer } from "react-konva";
-import { Node, NodeConfig } from "konva/lib/Node";
+import { Node, NodeConfig, KonvaEventObject } from "konva/lib/Node";
 import { useHotkeys } from "react-hotkeys-hook";
 import { nanoid } from "nanoid";
 import { Button, Col, Modal, Row } from "react-bootstrap";
@@ -27,11 +27,15 @@ import TextItem, { TextItemProps } from "./view/object/text";
 import ShapeItem, { ShapeItemProps } from "./view/object/shape";
 import IconItem, { IconItemProps } from "./view/object/icon";
 import LineItem, { LineItemProps } from "./view/object/line";
+import SeatItem, { SeatItemProps } from "./view/object/seat";
 import useModal from "./hook/useModal";
+import useSeatDrawing from "./hook/useSeatDrawing";
+import { SeatDrawMode } from "./types/seat";
 import hotkeyList from "./config/hotkey.json";
 import useHotkeyFunc from "./hook/useHotkeyFunc";
 import useWorkHistory from "./hook/useWorkHistory";
 import useI18n from "./hook/usei18n";
+import useDrawTools, { DrawToolMode } from "./hook/useDrawTools";
 import { initialStageDataList } from "./redux/initilaStageDataList";
 
 export type FileKind = {
@@ -72,6 +76,38 @@ function App() {
   } = useHotkeyFunc();
   const { getTranslation } = useI18n();
   const [clipboard, setClipboard] = useState<StageData[]>([]);
+
+  // 统一绘制工具 Hook
+  const {
+    drawMode,
+    previewRect,
+    polygonPoints,
+    polygonTempPoint,
+    startDrawMode,
+    exitDrawMode,
+    getCursor: getDrawCursor,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
+    onDoubleClick,
+    onContextMenu,
+    isDrawing,
+  } = useDrawTools();
+  
+  // 座位绘制工具 Hook
+  const {
+    drawMode: seatDrawMode,
+    previewSeats,
+    startPoint: seatStartPoint,
+    currentRowLabel,
+    startSeatMode,
+    exitSeatMode,
+    setCurrentRowLabel,
+    onMouseDown: onSeatMouseDown,
+    onMouseMove: onSeatMouseMove,
+    getCursor: getSeatCursor,
+  } = useSeatDrawing();
+
   const createStageDataObject = (item: Node<NodeConfig>): StageData => {
     const { id } = item.attrs;
     const target = item.attrs["data-item-type"] === "frame" ? item.getParent() : item;
@@ -84,6 +120,7 @@ function App() {
       children: [],
     };
   };
+
   const { getClickCallback } = useTool(
     stage,
     modal,
@@ -118,6 +155,47 @@ function App() {
         onCreateTab={onCreateTab}
         onDeleteTab={onDeleteTab}
       />
+      {/* 绘制模式指示器 */}
+      {isDrawing && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '20px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+          }}
+        >
+          {drawMode === 'rectangle' && '📐 绘制矩形中...'}
+          {drawMode === 'ellipse' && '⭕ 绘制椭圆中...'}
+          {drawMode === 'polygon' && `⬡ 绘制多边形中... (${polygonPoints.length} 点)`}
+          {seatDrawMode === 'single-seat' && '🪑 单座位模式'}
+          {seatDrawMode === 'row-straight' && '🎯 行座位模式'}
+          {seatDrawMode === 'section' && '🏟️ 区块座位模式'}
+          {drawMode === 'idle' && seatDrawMode === 'idle' && '选择模式'}
+          <button
+            onClick={() => {
+              exitDrawMode();
+              exitSeatMode();
+            }}
+            style={{
+              marginLeft: '8px',
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </Header>
   );
 
@@ -128,7 +206,42 @@ function App() {
           key={`navbar-${data.id}`}
           data={data}
           stage={stage}
-          onClick={getClickCallback(data.id)}
+          onClick={(clickedId: string) => {
+            console.log("Button clicked:", clickedId);
+            
+            // 如果已经在绘制模式，先退出
+            if (isDrawing) {
+              exitDrawMode();
+            }
+            if (seatDrawMode !== 'idle') {
+              exitSeatMode();
+            }
+            
+            // 处理绘制工具
+            if (clickedId === 'draw-rectangle') {
+              console.log("开始矩形绘制模式");
+              startDrawMode('rectangle');
+            } else if (clickedId === 'draw-ellipse') {
+              console.log("开始椭圆绘制模式");
+              startDrawMode('ellipse');
+            } else if (clickedId === 'draw-polygon') {
+              console.log("开始多边形绘制模式");
+              startDrawMode('polygon');
+            } else if (clickedId === 'seat-single') {
+              console.log("开始单座位绘制模式");
+              startSeatMode('single-seat');
+            } else if (clickedId === 'seat-row') {
+              console.log("开始行座位绘制模式");
+              startSeatMode('row-straight');
+            } else if (clickedId === 'seat-section') {
+              console.log("开始区块座位绘制模式");
+              startSeatMode('section');
+            } else {
+              // 其他工具使用原有逻辑
+              const callback = getClickCallback(clickedId);
+              callback();
+            }
+          }}
         />
       ))}
     </NavBar>
@@ -188,7 +301,7 @@ function App() {
       case "text":
         return (
           <TextItem
-            key={`image-${item.id}`}
+            key={`text-${item.id}`}
             data={item as TextItemProps["data"]}
             transformer={transformer}
             onSelect={onSelectItem}
@@ -217,6 +330,15 @@ function App() {
           <LineItem
             key={`line-${item.id}`}
             data={item as LineItemProps["data"]}
+            transformer={transformer}
+            onSelect={onSelectItem}
+          />
+        );
+      case "seat":
+        return (
+          <SeatItem
+            key={`seat-${item.id}`}
+            data={item as SeatItemProps["data"]}
             transformer={transformer}
             onSelect={onSelectItem}
           />
@@ -363,7 +485,23 @@ function App() {
   return (
     <Layout header={header} navBar={navBar} settingBar={settingBar}>
       {hotkeyModal}
-      <View onSelect={onSelectItem} stage={stage}>
+      <View 
+        onSelect={onSelectItem} 
+        stage={stage}
+        drawMode={drawMode}
+        seatDrawMode={seatDrawMode}
+        previewRect={previewRect}
+        previewSeats={previewSeats}
+        seatStartPoint={seatStartPoint}
+        polygonPoints={polygonPoints}
+        polygonTempPoint={polygonTempPoint}
+        onDrawMouseDown={seatDrawMode !== 'idle' ? onSeatMouseDown : onMouseDown}
+        onDrawMouseMove={seatDrawMode !== 'idle' ? onSeatMouseMove : onMouseMove}
+        onDrawMouseUp={seatDrawMode !== 'idle' ? undefined : onMouseUp}
+        onDrawDoubleClick={onDoubleClick}
+        onDrawContextMenu={onContextMenu}
+        cursor={seatDrawMode !== 'idle' ? getSeatCursor() : getDrawCursor()}
+      >
         {stageData.length ? sortedStageData.map((item) => renderObject(item)) : null}
         <Transformer
           ref={transformer.transformerRef}

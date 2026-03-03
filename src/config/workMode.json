@@ -1,5 +1,57 @@
 [
   {
+    "id": "draw-shape",
+    "name": "Draw Shape",
+    "desc": "Draw shapes",
+    "icon": "square",
+    "sub-button": [
+      {
+        "id": "draw-rectangle",
+        "name": "Rectangle Tool",
+        "desc": "Draw a rectangle",
+        "icon": "square"
+      },
+      {
+        "id": "draw-ellipse",
+        "name": "Ellipse Tool",
+        "desc": "Draw an ellipse",
+        "icon": "circle"
+      },
+      {
+        "id": "draw-polygon",
+        "name": "Polygon Tool",
+        "desc": "Draw a polygon",
+        "icon": "triangle"
+      }
+    ]
+  },
+  {
+    "id": "draw-seat",
+    "name": "Draw Seats",
+    "desc": "Draw seats like Seats.io",
+    "icon": "grid-3x3-gap",
+    "sub-button": [
+      {
+        "id": "seat-single",
+        "name": "Single Seat",
+        "desc": "Draw a single seat",
+        "icon": "circle"
+      },
+      {
+        "id": "seat-row",
+        "name": "Row of Seats",
+        "desc": "Draw a row of seats",
+        "icon": "view-week"
+      },
+      {
+        "id": "seat-section",
+        "name": "Seat Section",
+        "desc": "Draw a section of seats",
+        "icon": "grid-on"
+      }
+    ]
+  },
+  {
     "id": "select-all",
     "name": "Select All",
     "desc": "Select All Items",

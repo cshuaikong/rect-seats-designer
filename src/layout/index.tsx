@@ -37,7 +37,8 @@ const Layout: React.FC<LayoutProps> = ({ header, navBar, settingBar, children, f
           sizeStyles.widthLogo,
           sizeStyles.height100,
           alignStyles.fromTopCenter,
-        ].join(" ")}>
+        ].join(" ")}
+        style={{ overflow: 'visible', zIndex: 100 }}>
         {navBar}
       </Col>
       <Col className={["h-100", positionStyles.relative, colorStyles.greyTheme].join(" ")}>

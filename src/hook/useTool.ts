@@ -1,4 +1,5 @@
 import { Node, NodeConfig } from "konva/lib/Node";
+import { nanoid } from "nanoid";
 import { StageData } from "../redux/currentStageData";
 import useHotkeyFunc from "./useHotkeyFunc";
 import useItem from "./useItem";
@@ -17,7 +18,7 @@ const useTool = (
   createStageDataObject: (item: Node<NodeConfig>) => StageData,
   onSelectItem: ReturnType<typeof useSelection>["onSelectItem"],
 ) => {
-  const { updateItem } = useItem();
+  const { updateItem, createItem } = useItem();
   const hotkeyFunc = useHotkeyFunc();
   const { autoRemoveBackground } = useRemoveImageBackground();
   const onClickHotkeyButton = () => {
@@ -45,9 +46,52 @@ const useTool = (
     }
   };
 
+  const drawRectangle = () => {
+    console.log("drawRectangle called");
+    // ShapeItem 用 radius 计算宽高: width = Math.sqrt(radius * 2)
+    // 所以 radius = (width ^ 2) / 2
+    const width = 200;
+    const height = 150;
+    const radius = (Math.max(width, height) ** 2) / 2;
+    
+    const newRect: StageData = {
+      id: nanoid(),
+      attrs: {
+        name: "label-target",
+        "data-item-type": "shape",
+        x: 300,
+        y: 300,
+        width,
+        height,
+        fill: "#4CAF50",
+        stroke: "#2E7D32",
+        strokeWidth: 2,
+        sides: 4,
+        radius,
+        zIndex: 0,
+        brightness: 0,
+        updatedAt: Date.now(),
+      },
+      className: "Rect",
+      children: [],
+    };
+    console.log("Creating rect:", newRect);
+    createItem(newRect);
+    console.log("createItem called");
+  };
+
   const getClickCallback = (id: string) => () => {
     console.log(id);
     switch (id) {
+      case "draw-shape":
+      case "draw-rectangle":
+        return drawRectangle();
+      case "draw-ellipse":
+        console.log("Ellipse tool selected");
+        return;
+      case "draw-polygon":
+        console.log("Polygon tool selected");
+        return;
       case "select-all":
         return hotkeyFunc.selectAll(stage, onSelectItem);
       case "flip-horizontally":
