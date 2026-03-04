@@ -100,9 +100,13 @@ function App() {
     previewSeats,
     startPoint: seatStartPoint,
     currentRowLabel,
+    sectionConfig,
+    drawStep,
+    firstRowEnd,
     startSeatMode,
     exitSeatMode,
     setCurrentRowLabel,
+    setSectionConfig,
     onMouseDown: onSeatMouseDown,
     onMouseMove: onSeatMouseMove,
     getCursor: getSeatCursor,
@@ -174,9 +178,17 @@ function App() {
           {drawMode === 'rectangle' && '📐 绘制矩形中...'}
           {drawMode === 'ellipse' && '⭕ 绘制椭圆中...'}
           {drawMode === 'polygon' && `⬡ 绘制多边形中... (${polygonPoints.length} 点)`}
-          {seatDrawMode === 'single-seat' && '🪑 单座位模式'}
           {seatDrawMode === 'row-straight' && '🎯 行座位模式'}
-          {seatDrawMode === 'section' && '🏟️ 区块座位模式'}
+          {seatDrawMode === 'section' && (
+            drawStep === 'second' ? '↗️ 有角度行：确定第一段' :
+            drawStep === 'third' ? '↗️ 有角度行：确定第二段方向' :
+            '↗️ 有角度行：点击起点'
+          )}
+          {seatDrawMode === 'section-diagonal' && (
+            drawStep === 'second' ? '📐 多行区块：确定第一行方向' :
+            drawStep === 'third' ? '📐 多行区块：确定行排列方向和数量' :
+            '📐 多行区块：点击起点'
+          )}
           {drawMode === 'idle' && seatDrawMode === 'idle' && '选择模式'}
           <button
             onClick={() => {
@@ -194,6 +206,62 @@ function App() {
           >
             ✕
           </button>
+        </div>
+      )}
+      {/* 三点式绘制配置面板 */}
+      {(seatDrawMode === 'section' || seatDrawMode === 'section-diagonal') && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '20px',
+            top: 'calc(50% + 50px)',
+            transform: 'translateY(-50%)',
+            backgroundColor: 'white',
+            color: '#333',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            minWidth: '160px',
+          }}
+        >
+          <div style={{ marginBottom: '10px', fontWeight: 'bold', borderBottom: '1px solid #eee', paddingBottom: '6px' }}>
+            {seatDrawMode === 'section' ? '有角度行' : '多行区块'}
+          </div>
+          
+          {/* 步骤指示 */}
+          <div style={{ marginBottom: '12px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+            <div style={{ 
+              color: drawStep === 'idle' || drawStep === 'first' ? '#4CAF50' : '#999',
+              fontWeight: drawStep === 'idle' || drawStep === 'first' ? 'bold' : 'normal',
+              marginBottom: '4px'
+            }}>
+              ① 点击确定起点
+            </div>
+            <div style={{ 
+              color: drawStep === 'second' ? '#4CAF50' : '#999',
+              fontWeight: drawStep === 'second' ? 'bold' : 'normal',
+              marginBottom: '4px'
+            }}>
+              {seatDrawMode === 'section' ? '② 确定第一段方向' : '② 确定第一行方向'}
+            </div>
+            <div style={{ 
+              color: drawStep === 'third' ? '#4CAF50' : '#999',
+              fontWeight: drawStep === 'third' ? 'bold' : 'normal'
+            }}>
+              {seatDrawMode === 'section' ? '③ 确定第二段方向' : '③ 确定行排列方向和数量'}
+            </div>
+          </div>
+
+          {seatDrawMode === 'section-diagonal' && (
+            <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '11px', color: '#666' }}>
+              每行座位数由第1、2点距离自动计算
+            </div>
+          )}
+          
+          <div style={{ marginTop: '10px', fontSize: '11px', color: '#999', lineHeight: '1.4' }}>
+            按 ESC 取消当前绘制
+          </div>
         </div>
       )}
     </Header>
@@ -227,15 +295,15 @@ function App() {
             } else if (clickedId === 'draw-polygon') {
               console.log("开始多边形绘制模式");
               startDrawMode('polygon');
-            } else if (clickedId === 'seat-single') {
-              console.log("开始单座位绘制模式");
-              startSeatMode('single-seat');
             } else if (clickedId === 'seat-row') {
               console.log("开始行座位绘制模式");
               startSeatMode('row-straight');
             } else if (clickedId === 'seat-section') {
               console.log("开始区块座位绘制模式");
               startSeatMode('section');
+            } else if (clickedId === 'seat-section-diagonal') {
+              console.log("开始对角区块绘制模式");
+              startSeatMode('section-diagonal');
             } else {
               // 其他工具使用原有逻辑
               const callback = getClickCallback(clickedId);

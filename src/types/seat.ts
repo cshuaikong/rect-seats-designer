@@ -99,7 +99,8 @@ export type SeatDrawMode =
   | 'row-straight'     // 直行
   | 'row-curved'       // 弧形行
   | 'row-segments'     // 带间断的行
-  | 'section';         // 区块
+  | 'section'          // 区块（自动计算）
+  | 'section-diagonal';// 区块（对角线形式，可控制长宽）
 
 // 绘制工具配置
 export interface SeatDrawTool {
@@ -115,4 +116,5 @@ export const seatDrawTools: SeatDrawTool[] = [
   { id: 'row-curved', name: '弧形行', icon: 'panorama-wide-angle', description: '绘制弧形排布的座位' },
   { id: 'row-segments', name: '行段', icon: 'view-module', description: '绘制带间断的座位行' },
   { id: 'section', name: '区块', icon: 'grid-on', description: '绘制多行组成的座位区块' },
+  { id: 'section-diagonal', name: '对角区块', icon: 'diagonal', description: '对角线形式，可控制行列数' },
 ];

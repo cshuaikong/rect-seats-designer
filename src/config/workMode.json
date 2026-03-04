@@ -32,22 +32,22 @@
     "icon": "grid-3x3-gap",
     "sub-button": [
       {
-        "id": "seat-single",
-        "name": "Single Seat",
-        "desc": "Draw a single seat",
-        "icon": "circle"
-      },
-      {
         "id": "seat-row",
-        "name": "Row of Seats",
+        "name": "Row Tool",
         "desc": "Draw a row of seats",
         "icon": "view-week"
       },
       {
         "id": "seat-section",
-        "name": "Seat Section",
+        "name": "Row with segment s seats",
         "desc": "Draw a section of seats",
         "icon": "grid-on"
+      },
+      {
+        "id": "seat-section-diagonal",
+        "name": "multiple rows tool",
+        "desc": "Draw a section with fixed rows and seats",
+        "icon": "bounding-box"
       }
     ]
   },
