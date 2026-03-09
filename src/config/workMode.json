@@ -110,5 +110,31 @@
     "name": "Shortcut",
     "desc": "Keyboard Shortcut",
     "icon": "keyboard-fill"
+  },
+  {
+    "id": "save-load",
+    "name": "Save & Load",
+    "desc": "Save or load your work",
+    "icon": "save",
+    "sub-button": [
+      {
+        "id": "export-json",
+        "name": "Export to JSON",
+        "desc": "Export your work to a JSON file",
+        "icon": "file-earmark-arrow-down"
+      },
+      {
+        "id": "import-json",
+        "name": "Import from JSON",
+        "desc": "Import work from a JSON file",
+        "icon": "file-earmark-arrow-up"
+      },
+      {
+        "id": "clear-data",
+        "name": "Clear Saved Data",
+        "desc": "Clear all saved data and reset",
+        "icon": "trash"
+      }
+    ]
   }
 ]

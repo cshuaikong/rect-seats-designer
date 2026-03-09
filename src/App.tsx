@@ -37,6 +37,7 @@ import useWorkHistory from "./hook/useWorkHistory";
 import useI18n from "./hook/usei18n";
 import useDrawTools, { DrawToolMode } from "./hook/useDrawTools";
 import { initialStageDataList } from "./redux/initilaStageDataList";
+import useAutoSave from "./hook/useAutoSave";
 
 export type FileKind = {
   "file-id": string;
@@ -58,9 +59,9 @@ function App() {
   const transformer = useTransformer();
   const { selectedItems, onSelectItem, setSelectedItems, clearSelection }
     = useSelection(transformer);
-  const { tabList, onClickTab, onCreateTab, onDeleteTab } = useTab(transformer, clearHistory);
+  const { tabList, onClickTab, onCreateTab, onDeleteTab, moveTab } = useTab(transformer, clearHistory);
   const { stageData } = useItem();
-  const { initializeFileDataList, updateFileData } = useStageDataList();
+  const { stageDataList, initializeFileDataList, updateFileData } = useStageDataList();
   const stage = useStage();
   const modal = useModal();
   const {
@@ -76,6 +77,7 @@ function App() {
   } = useHotkeyFunc();
   const { getTranslation } = useI18n();
   const [clipboard, setClipboard] = useState<StageData[]>([]);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   // 统一绘制工具 Hook
   const {
@@ -136,6 +138,15 @@ function App() {
   );
 
   const currentTabId = useMemo(() => tabList.find((tab) => tab.active)?.id ?? null, [tabList]);
+
+  // 自动保存功能
+  const {
+    loadData,
+    exportToFile,
+    importFromFile,
+    clearSavedData,
+    isAutoSaveEnabled,
+  } = useAutoSave(stageDataList, stageData, currentTabId);
 
   const sortedStageData = useMemo(
     () =>
@@ -267,6 +278,41 @@ function App() {
     </Header>
   );
 
+  // 处理导入文件
+  const handleImportFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          const importedData = await importFromFile(file);
+          if (importedData) {
+            initializeFileDataList(importedData.stageDataList);
+            if (importedData.currentTabId) {
+              moveTab(importedData.currentTabId, importedData.stageDataList.find(
+                (tab) => tab.id === importedData.currentTabId,
+              ));
+            }
+            console.log("[App] 数据导入成功");
+          }
+        } catch (err) {
+          alert(`导入失败: ${err instanceof Error ? err.message : '未知错误'}`);
+        }
+      }
+    };
+    input.click();
+  };
+
+  // 处理清除数据
+  const handleClearData = () => {
+    if (confirm("确定要清除所有保存的数据吗？这将重置为默认状态。")) {
+      clearSavedData();
+      window.location.reload();
+    }
+  };
+
   const navBar = (
     <NavBar>
       {workModeList.map((data) => (
@@ -304,6 +350,15 @@ function App() {
             } else if (clickedId === 'seat-section-diagonal') {
               console.log("开始对角区块绘制模式");
               startSeatMode('section-diagonal');
+            } else if (clickedId === 'export-json') {
+              console.log("导出数据到 JSON");
+              exportToFile();
+            } else if (clickedId === 'import-json') {
+              console.log("从 JSON 导入数据");
+              handleImportFile();
+            } else if (clickedId === 'clear-data') {
+              console.log("清除保存的数据");
+              handleClearData();
             } else {
               // 其他工具使用原有逻辑
               const callback = getClickCallback(clickedId);
@@ -531,8 +586,28 @@ function App() {
       e.preventDefault();
       e.returnValue = "";
     });
-    onCreateTab(undefined, initialStageDataList[0] as StageDataListItem);
-    initializeFileDataList(initialStageDataList);
+
+    // 尝试从 localStorage 加载保存的数据
+    const savedData = loadData();
+    if (savedData && savedData.stageDataList.length > 0) {
+      console.log("[App] 从 localStorage 加载保存的数据");
+      initializeFileDataList(savedData.stageDataList);
+      // 恢复上次活动的标签页
+      if (savedData.currentTabId) {
+        const tabToActivate = savedData.stageDataList.find(
+          (tab) => tab.id === savedData.currentTabId,
+        );
+        if (tabToActivate) {
+          moveTab(savedData.currentTabId, tabToActivate);
+        }
+      }
+    } else {
+      console.log("[App] 使用默认初始数据");
+      onCreateTab(undefined, initialStageDataList[0] as StageDataListItem);
+      initializeFileDataList(initialStageDataList);
+    }
+
+    setIsDataLoaded(true);
     stage.stageRef.current.setPosition({
       x: Math.max(Math.ceil(stage.stageRef.current.width() - 1280) / 2, 0),
       y: Math.max(Math.ceil(stage.stageRef.current.height() - 760) / 2, 0),
