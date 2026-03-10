@@ -30,8 +30,10 @@ import LineItem, { LineItemProps } from "./view/object/line";
 import SeatItem, { SeatItemProps } from "./view/object/seat";
 import useModal from "./hook/useModal";
 import useSeatDrawing from "./hook/useSeatDrawing";
+import useRowEdit from "./hook/useRowEdit";
 import { SeatDrawMode } from "./types/seat";
 import hotkeyList from "./config/hotkey.json";
+import RowEditor from "./view/RowEditor";
 import useHotkeyFunc from "./hook/useHotkeyFunc";
 import useWorkHistory from "./hook/useWorkHistory";
 import useI18n from "./hook/usei18n";
@@ -113,6 +115,22 @@ function App() {
     onMouseMove: onSeatMouseMove,
     getCursor: getSeatCursor,
   } = useSeatDrawing();
+
+  // 行编辑工具 Hook
+  const {
+    rowEditMode,
+    selectedRow,
+    startRowEdit,
+    exitRowEdit,
+    selectRowBySeat,
+    addSeatToStart,
+    addSeatToEnd,
+    removeSeatFromStart,
+    removeSeatFromEnd,
+    rotateRow,
+    moveRow,
+    getRowCursor,
+  } = useRowEdit();
 
   const createStageDataObject = (item: Node<NodeConfig>): StageData => {
     const { id } = item.attrs;
@@ -313,6 +331,26 @@ function App() {
     }
   };
 
+  // 检查按钮是否处于激活状态
+  const isButtonActive = (data: any): boolean => {
+    // 形状绘制工具
+    if (data["sub-button"]) {
+      return data["sub-button"].some((sub: any) => {
+        if (sub.id === 'draw-rectangle') return drawMode === 'rectangle';
+        if (sub.id === 'draw-ellipse') return drawMode === 'ellipse';
+        if (sub.id === 'draw-polygon') return drawMode === 'polygon';
+        if (sub.id === 'seat-row') return seatDrawMode === 'row-straight';
+        if (sub.id === 'seat-section') return seatDrawMode === 'section';
+        if (sub.id === 'seat-section-diagonal') return seatDrawMode === 'section-diagonal';
+        return false;
+      });
+    }
+    // 行编辑按钮
+    if (data.id === 'row-edit') return rowEditMode === 'editing';
+    // 单独按钮
+    return false;
+  };
+
   const navBar = (
     <NavBar>
       {workModeList.map((data) => (
@@ -320,6 +358,7 @@ function App() {
           key={`navbar-${data.id}`}
           data={data}
           stage={stage}
+          isActive={isButtonActive(data)}
           onClick={(clickedId: string) => {
             console.log("Button clicked:", clickedId);
             
@@ -359,6 +398,13 @@ function App() {
             } else if (clickedId === 'clear-data') {
               console.log("清除保存的数据");
               handleClearData();
+            } else if (clickedId === 'row-edit') {
+              console.log("切换行编辑模式");
+              if (rowEditMode === 'idle') {
+                startRowEdit();
+              } else {
+                exitRowEdit();
+              }
             } else {
               // 其他工具使用原有逻辑
               const callback = getClickCallback(clickedId);
@@ -463,7 +509,41 @@ function App() {
             key={`seat-${item.id}`}
             data={item as SeatItemProps["data"]}
             transformer={transformer}
-            onSelect={onSelectItem}
+            onSelect={(e) => {
+              if (rowEditMode === 'editing') {
+                // 行编辑模式：用 Transformer 选中整行所有座位
+                if (e) e.cancelBubble = true;
+                
+                const rowNumber = item.attrs.rowNumber as string;
+                
+                // 获取 stage 实例
+                const stageInstance = stage.stageRef.current;
+                if (!stageInstance || !transformer.transformerRef.current) return;
+                
+                // 清空当前选择
+                transformer.transformerRef.current.nodes([]);
+                
+                // 查找所有座位节点，筛选出当前行的
+                const allSeats = stageInstance.find('.label-target');
+                const rowNodes = allSeats.filter(node => {
+                  // 检查节点的 rowNumber 属性是否匹配
+                  return node.attrs['rowNumber'] === rowNumber;
+                }) as Node<NodeConfig>[];
+                
+                // 用 Transformer 选中整行所有座位
+                transformer.transformerRef.current.nodes(rowNodes);
+                
+                // 配置行编辑模式：只允许左右拉伸，保留旋转手柄
+                transformer.transformerRef.current.enabledAnchors(['middle-left', 'middle-right']);
+                transformer.transformerRef.current.rotateEnabled(true);
+                transformer.transformerRef.current.update();
+                
+                setSelectedItems(rowNodes);
+              } else {
+                // 普通模式：正常选择
+                onSelectItem(e);
+              }
+            }}
           />
         );
       default:
@@ -643,9 +723,11 @@ function App() {
         onDrawMouseUp={seatDrawMode !== 'idle' ? undefined : onMouseUp}
         onDrawDoubleClick={onDoubleClick}
         onDrawContextMenu={onContextMenu}
-        cursor={seatDrawMode !== 'idle' ? getSeatCursor() : getDrawCursor()}
+        cursor={seatDrawMode !== 'idle' ? 'crosshair' : rowEditMode === 'editing' ? 'move' : 'default'}
       >
         {stageData.length ? sortedStageData.map((item) => renderObject(item)) : null}
+        
+        
         <Transformer
           ref={transformer.transformerRef}
           keepRatio

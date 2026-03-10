@@ -1,15 +1,21 @@
 [
   {
+    "id": "select-all",
+    "name": "Select All",
+    "desc": "Select All Items",
+    "icon": "cursor"
+  },
+  {
     "id": "draw-shape",
     "name": "Draw Shape",
     "desc": "Draw shapes",
-    "icon": "square",
+    "icon": "brush",
     "sub-button": [
       {
         "id": "draw-rectangle",
         "name": "Rectangle Tool",
         "desc": "Draw a rectangle",
-        "icon": "square"
+        "icon": "rect"
       },
       {
         "id": "draw-ellipse",
@@ -21,7 +27,7 @@
         "id": "draw-polygon",
         "name": "Polygon Tool",
         "desc": "Draw a polygon",
-        "icon": "triangle"
+        "icon": "polygon"
       }
     ]
   },
@@ -29,87 +35,93 @@
     "id": "draw-seat",
     "name": "Draw Seats",
     "desc": "Draw seats like Seats.io",
-    "icon": "grid-3x3-gap",
+    "icon": "seat-draw",
     "sub-button": [
       {
         "id": "seat-row",
         "name": "Row Tool",
         "desc": "Draw a row of seats",
-        "icon": "view-week"
+        "icon": "row"
       },
       {
         "id": "seat-section",
-        "name": "Row with segment s seats",
+        "name": "Row with segment",
         "desc": "Draw a section of seats",
-        "icon": "grid-on"
+        "icon": "section"
       },
       {
         "id": "seat-section-diagonal",
-        "name": "multiple rows tool",
+        "name": "Multiple rows tool",
         "desc": "Draw a section with fixed rows and seats",
-        "icon": "bounding-box"
+        "icon": "section"
       }
     ]
   },
   {
-    "id": "select-all",
-    "name": "Select All",
-    "desc": "Select All Items",
-    "icon": "bounding-box"
+    "id": "text-tool",
+    "name": "Text",
+    "desc": "Add text",
+    "icon": "text"
   },
   {
-    "id": "remove-background",
-    "name": "Remove Background of Selected Image",
-    "desc": "Remove Background of Selected Image",
-    "icon": "card-image"
+    "id": "image-tool",
+    "name": "Image",
+    "desc": "Add image",
+    "icon": "image"
+  },
+  {
+    "id": "people-tool",
+    "name": "Icons",
+    "desc": "Add people icons",
+    "icon": "people"
+  },
+  {
+    "id": "row-edit",
+    "name": "Row Edit",
+    "desc": "Edit seat rows",
+    "icon": "row"
   },
   {
     "id": "flip-horizontally",
     "name": "Flip Horizontally",
     "desc": "Flip Horizontally",
-    "icon": "arrow-left-right"
+    "icon": "flip-h"
   },
   {
     "id": "flip-vertically",
     "name": "Flip Vertically",
     "desc": "Flip Vertically",
-    "icon": "arrow-down-up"
-  },
-  {
-    "id": "reset-zoom",
-    "name": "Reset Zoom",
-    "desc": "Reset Zoom",
-    "icon": "arrows-fullscreen"
-  },
-  {
-    "id": "zoom-in",
-    "name": "Zoom In",
-    "desc": "Zoom In",
-    "icon": "arrows-angle-expand"
-  },
-  {
-    "id": "zoom-out",
-    "name": "Zoom Out",
-    "desc": "Zoom Out",
-    "icon": "arrows-angle-contract"
+    "icon": "flip-v"
   },
   {
     "id": "layer-up",
     "name": "Layer Up",
     "desc": "Layer Up",
-    "icon": "front"
+    "icon": "layer-up"
   },
   {
     "id": "layer-down",
     "name": "Layer Down",
     "desc": "Layer Down",
-    "icon": "back"
+    "icon": "layer-down"
   },
   {
-    "id": "hotkey",
-    "name": "Shortcut",
-    "desc": "Keyboard Shortcut",
-    "icon": "keyboard-fill"
+    "id": "reset-zoom",
+    "name": "Reset Zoom",
+    "desc": "Reset Zoom",
+    "icon": "reset-zoom"
+  },
+  {
+    "id": "zoom-in",
+    "name": "Zoom In",
+    "desc": "Zoom In",
+    "icon": "zoom-in"
+  },
+  {
+    "id": "zoom-out",
+    "name": "Zoom Out",
+    "desc": "Zoom Out",
+    "icon": "zoom-out"
   },
   {
     "id": "save-load",
@@ -121,13 +133,13 @@
         "id": "export-json",
         "name": "Export to JSON",
         "desc": "Export your work to a JSON file",
-        "icon": "file-earmark-arrow-down"
+        "icon": "save"
       },
       {
         "id": "import-json",
         "name": "Import from JSON",
         "desc": "Import work from a JSON file",
-        "icon": "file-earmark-arrow-up"
+        "icon": "save"
       },
       {
         "id": "clear-data",
@@ -136,5 +148,11 @@
         "icon": "trash"
       }
     ]
+  },
+  {
+    "id": "hotkey",
+    "name": "Shortcut",
+    "desc": "Keyboard Shortcut",
+    "icon": "keyboard"
   }
 ]

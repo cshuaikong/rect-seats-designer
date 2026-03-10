@@ -21,7 +21,7 @@ const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
     rowNumber,
     seatNumber,
     status = 'available',
-    radius = 12,
+    radius = 6,
     fill,
     stroke,
     strokeWidth,
@@ -31,7 +31,8 @@ const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
     return defaultSeatMapConfig.statusColors[s] || defaultSeatMapConfig.statusColors.available;
   };
   
-  const seatColor = fill || getStatusColor(status as SeatStatus);
+  // 新绘制的座位默认灰色，不应用状态颜色
+  const seatColor = fill || '#9E9E9E';
   
   const handleClick = (e: KonvaEventObject<MouseEvent>) => {
     if (onSelect) {
@@ -66,7 +67,7 @@ const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
         y={attrs.y}
         radius={radius}
         fill={seatColor}
-        stroke={stroke || '#2E7D32'}
+        stroke={stroke || '#444444'}
         strokeWidth={strokeWidth || 1}
         draggable
         onDragEnd={(e) => {

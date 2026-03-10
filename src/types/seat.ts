@@ -73,9 +73,9 @@ export interface SeatMapConfig {
 
 // 默认配置
 export const defaultSeatMapConfig: SeatMapConfig = {
-  defaultSeatRadius: 12,
-  defaultSeatSpacing: 28,
-  defaultRowSpacing: 32,
+  defaultSeatRadius: 6,
+  defaultSeatSpacing: 18,   // 从 28 缩小到 18，座位更紧凑
+  defaultRowSpacing: 22,    // 从 32 缩小到 22
   showRowLabels: true,
   showSeatLabels: true,
   statusColors: {

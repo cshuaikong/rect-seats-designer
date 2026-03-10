@@ -1,9 +1,9 @@
-import { Stage, Layer, Line, Ellipse, Rect } from "react-konva";
-import React, { PropsWithChildren, useEffect, useRef, useCallback, useMemo } from "react";
+import { Stage, Layer, Line, Ellipse, Rect, Group } from "react-konva";
+import React, { PropsWithChildren, useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { Stage as StageType } from "konva/lib/Stage";
 import { Node, NodeConfig, KonvaEventObject } from "konva/lib/Node";
 import { PreviewRect, DrawToolMode } from "../hook/useDrawTools";
-import { SeatDrawMode, SeatData } from "../types/seat";
+import { SeatDrawMode, SeatData, defaultSeatMapConfig } from "../types/seat";
 import { Circle as SeatCircle, Text as SeatText } from "react-konva";
 
 interface ViewProps extends PropsWithChildren {
@@ -49,6 +49,9 @@ export default function View({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const dragCurrentRef = useRef<{ x: number; y: number } | null>(null);
+  
+  // 鼠标位置（用于座位绘制工具的跟随预览）
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
   const stageConfig = useMemo(
     () => ({
       width: Math.max(window.innerWidth - 410, 1280),
@@ -118,10 +121,24 @@ export default function View({
   }, [drawMode, seatDrawMode, onDrawMouseDown, onSelect, stage]);
 
   const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    if (seatDrawMode !== 'idle' && onDrawMouseMove) {
-      onDrawMouseMove(e);
+    // 座位绘制模式：更新鼠标位置用于预览圆圈跟随
+    if (seatDrawMode !== 'idle') {
+      const stage = e.target.getStage();
+      if (stage) {
+        const pos = stage.getPointerPosition();
+        if (pos) {
+          const scale = stage.scaleX();
+          const x = (pos.x - stage.x()) / scale;
+          const y = (pos.y - stage.y()) / scale;
+          setMousePosition({ x, y });
+        }
+      }
+      if (onDrawMouseMove) {
+        onDrawMouseMove(e);
+      }
       return;
     }
+    
     if (drawMode !== 'idle' && onDrawMouseMove) {
       onDrawMouseMove(e);
     }
@@ -271,7 +288,7 @@ export default function View({
               <SeatCircle
                 x={seatStartPoint.x}
                 y={seatStartPoint.y}
-                radius={8}
+                radius={6}
                 fill="#FF5722"
                 stroke="#fff"
                 strokeWidth={2}
@@ -287,35 +304,54 @@ export default function View({
             </>
           )}
           
-          {/* 座位预览 */}
-          {seatDrawMode !== 'idle' && previewSeats.map((seat) => (
-            <React.Fragment key={`preview-seat-${seat.id}`}>
-              <SeatCircle
-                x={seat.x}
-                y={seat.y}
-                radius={seat.radius || 12}
-                fill={seat.id === 'start-point' ? "#FF5722" : "rgba(76, 175, 80, 0.5)"}
-                stroke={seat.id === 'start-point' ? "#fff" : "#4CAF50"}
-                strokeWidth={2}
-                dash={seat.id === 'start-point' ? undefined : [3, 3]}
+          {/* 座位绘制工具 - 鼠标跟随预览圆圈（首位座位颜色） */}
+          {/* 仅在未开始绘制时显示（seatStartPoint 为 null） */}
+          {seatDrawMode !== 'idle' && mousePosition && !seatStartPoint && (
+            <SeatCircle
+              x={mousePosition.x}
+              y={mousePosition.y}
+              radius={6}
+              fill="#D2EDFE"
+              stroke="#0985FA"
+              strokeWidth={1.5}
+              listening={false}
+              perfectDrawEnabled={false}
+            />
+          )}
+          
+          {/* Seats.io 风格座位预览 */}
+          {seatDrawMode !== 'idle' && previewSeats.length > 0 && (
+            <>
+              {/* 辅助线 - 连接座位中心的水平线 */}
+              <Line
+                points={[
+                  previewSeats[0].x,
+                  previewSeats[0].y,
+                  previewSeats[previewSeats.length - 1].x,
+                  previewSeats[previewSeats.length - 1].y
+                ]}
+                stroke="#2196F3"
+                strokeWidth={1}
+                opacity={0.5}
+                dash={[4, 4]}
+                listening={false}
               />
-              {seat.id !== 'start-point' && (
-                <SeatText
-                  x={seat.x - (seat.radius || 12)}
-                  y={seat.y - (seat.radius || 12)}
-                  width={(seat.radius || 12) * 2}
-                  height={(seat.radius || 12) * 2}
-                  text={seat.seatNumber}
-                  fontSize={(seat.radius || 12) * 0.8}
-                  fontFamily="Arial"
-                  fill="#fff"
-                  align="center"
-                  verticalAlign="middle"
+              
+              {/* 预览座位 - 首位边框#0985FA，中间边框#0E64C8，填充#D2EDFE */}
+              {previewSeats.map((seat, index) => (
+                <SeatCircle
+                  key={`preview-seat-circle-${seat.id}`}
+                  x={seat.x}
+                  y={seat.y}
+                  radius={seat.radius || 6}
+                  fill="#D2EDFE"
+                  stroke={index === 0 ? "#0985FA" : "#0E64C8"}
+                  strokeWidth={1.5}
                   listening={false}
                 />
-              )}
-            </React.Fragment>
-          ))}
+              ))}
+            </>
+          )}
         </Layer>
         <Layer>{children}</Layer>
       </Stage>

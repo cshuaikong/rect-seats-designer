@@ -32,13 +32,12 @@ const Layout: React.FC<LayoutProps> = ({ header, navBar, settingBar, children, f
       className={[sizeStyles.height90, positionStyles.relative, positionStyles.zIndex1].join(" ")}>
       <Col
         xs="auto"
-        className={[
-          colorStyles.darkTheme,
-          sizeStyles.widthLogo,
-          sizeStyles.height100,
-          alignStyles.fromTopCenter,
-        ].join(" ")}
-        style={{ overflow: 'visible', zIndex: 100 }}>
+        style={{ 
+          overflow: 'visible', 
+          zIndex: 100,
+          padding: 0,
+          height: '100%'
+        }}>
         {navBar}
       </Col>
       <Col className={["h-100", positionStyles.relative, colorStyles.greyTheme].join(" ")}>
