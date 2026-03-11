@@ -48,7 +48,7 @@ const useItem = () => {
       ...(targetItem ?? {}),
       attrs: {
         ...(targetItem ? targetItem.attrs : {}),
-        ...attrsFunc(targetItem),
+        ...attrsFunc(targetItem ? targetItem.attrs : {}),
       },
     } as StageData;
     dispatch(stageDataAction.updateItem(updatedObject));

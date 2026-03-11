@@ -40,6 +40,7 @@ const useDrawTools = () => {
   const startPosRef = useRef({ x: 0, y: 0 });
   const pointsRef = useRef<PolygonPoint[]>([]);
   const previewRectRef = useRef(previewRect);
+  const drawModeRef = useRef(drawMode);
   
   // 同步 ref
   useEffect(() => {
@@ -49,6 +50,10 @@ const useDrawTools = () => {
   useEffect(() => {
     previewRectRef.current = previewRect;
   }, [previewRect]);
+  
+  useEffect(() => {
+    drawModeRef.current = drawMode;
+  }, [drawMode]);
 
   /**
    * 开始绘制模式
@@ -87,40 +92,7 @@ const useDrawTools = () => {
    * 处理鼠标按下（矩形/椭圆）
    */
   const handleShapeMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    console.log('handleShapeMouseDown 被调用', { button: e.evt.button, drawMode });
     if (e.evt.button !== 0) return;
-    
-    const stage = e.target.getStage();
-    if (!stage) {
-      console.log('没有找到 stage');
-      return;
-    }
-    
-    const pos = stage.getPointerPosition();
-    if (!pos) {
-      console.log('没有获取到指针位置');
-      return;
-    }
-    
-    const scale = stage.scaleX();
-    const x = (pos.x - stage.x()) / scale;
-    const y = (pos.y - stage.y()) / scale;
-    
-    console.log('开始矩形/椭圆绘制:', { x, y });
-    isDrawingRef.current = true;
-    startPosRef.current = { x, y };
-    
-    setPreviewRect({ x, y, width: 0, height: 0, visible: true });
-  }, [drawMode]);
-
-  /**
-   * 处理鼠标移动（矩形/椭圆）
-   */
-  const handleShapeMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    if (!isDrawingRef.current) {
-      console.log('鼠标移动但不在绘制中');
-      return;
-    }
     
     const stage = e.target.getStage();
     if (!stage) return;
@@ -129,8 +101,41 @@ const useDrawTools = () => {
     if (!pos) return;
     
     const scale = stage.scaleX();
-    const currentX = (pos.x - stage.x()) / scale;
-    const currentY = (pos.y - stage.y()) / scale;
+    const stageX = stage.x();
+    const stageY = stage.y();
+    const x = (pos.x - stageX) / scale;
+    const y = (pos.y - stageY) / scale;
+    
+    console.log('[useDrawTools] 鼠标按下:', { 
+      pos, 
+      stageX, stageY, 
+      scale, 
+      calculated: { x, y } 
+    });
+    
+    isDrawingRef.current = true;
+    startPosRef.current = { x, y };
+    
+    setPreviewRect({ x, y, width: 0, height: 0, visible: true });
+  }, []);  // 移除 drawMode 依赖，避免闭包问题
+
+  /**
+   * 处理鼠标移动（矩形/椭圆）
+   */
+  const handleShapeMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    if (!isDrawingRef.current) return;
+    
+    const stage = e.target.getStage();
+    if (!stage) return;
+    
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    
+    const scale = stage.scaleX();
+    const stageX = stage.x();
+    const stageY = stage.y();
+    const currentX = (pos.x - stageX) / scale;
+    const currentY = (pos.y - stageY) / scale;
     
     const startX = startPosRef.current.x;
     const startY = startPosRef.current.y;
@@ -140,7 +145,6 @@ const useDrawTools = () => {
     const width = Math.abs(currentX - startX);
     const height = Math.abs(currentY - startY);
     
-    console.log('更新预览:', { x, y, width, height });
     setPreviewRect({ x, y, width, height, visible: true });
   }, []);
 
@@ -148,27 +152,30 @@ const useDrawTools = () => {
    * 处理鼠标松开（矩形/椭圆）
    */
   const handleShapeMouseUp = useCallback(() => {
-    console.log('handleShapeMouseUp 被调用', { isDrawing: isDrawingRef.current });
     if (!isDrawingRef.current) return;
     
     isDrawingRef.current = false;
     const { x, y, width, height } = previewRectRef.current;
-    console.log('创建形状:', { drawMode, x, y, width, height });
+    const currentDrawMode = drawModeRef.current;  // 使用 ref 获取最新值
+    
+    console.log('[useDrawTools] 鼠标松开:', { 
+      currentDrawMode, x, y, width, height,
+      previewFromState: previewRect  // 对比 state 和 ref
+    });
     
     if (width < 10 || height < 10) {
-      console.log('尺寸太小，取消创建');
       setPreviewRect({ x: 0, y: 0, width: 0, height: 0, visible: false });
       return;
     }
     
-    if (drawMode === 'rectangle') {
+    if (currentDrawMode === 'rectangle') {
       createRectangle(x, y, width, height);
-    } else if (drawMode === 'ellipse') {
+    } else if (currentDrawMode === 'ellipse') {
       createEllipse(x, y, width, height);
     }
     
     setPreviewRect({ x: 0, y: 0, width: 0, height: 0, visible: false });
-  }, [drawMode]);
+  }, []);  // 移除 drawMode 依赖
 
   /**
    * 创建矩形

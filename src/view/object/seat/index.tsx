@@ -1,4 +1,4 @@
-import React, { RefObject, useRef } from 'react';
+import React, { RefObject, useRef, useCallback } from 'react';
 import { Circle as CircleType } from 'konva/lib/shapes/Circle';
 import { Circle, Text, Group } from 'react-konva';
 import { KonvaEventObject } from 'konva/lib/Node';
@@ -54,8 +54,29 @@ const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
     }));
   };
   
+  const onDragMove = useCallback((e: KonvaEventObject<DragEvent>) => {
+    e.target.getLayer()?.batchDraw();
+  }, []);
+  
+  const onDragEnd = useCallback((e: KonvaEventObject<DragEvent>) => {
+    e.evt.preventDefault();
+    e.evt.stopPropagation();
+    updateItem(e.target.id(), () => ({
+      ...e.target.attrs,
+      updatedAt: Date.now(),
+    }));
+    e.target.getLayer()?.batchDraw();
+  }, [data]);
+  
   return (
-    <Group x={attrs.x} y={attrs.y}>
+    <Group 
+      id={data.id}
+      x={attrs.x} 
+      y={attrs.y}
+      draggable
+      onDragMove={onDragMove}
+      onDragEnd={onDragEnd}
+    >
       {/* 主座位圆形 - 包含所有属性和事件 */}
       <Circle
         ref={seatRef}
