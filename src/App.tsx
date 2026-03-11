@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Transformer } from "react-konva";
 import { Node, NodeConfig, KonvaEventObject } from "konva/lib/Node";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -18,9 +18,8 @@ import useItem from "./hook/useItem";
 import { StageDataListItem } from "./redux/stageDataList";
 import useStageDataList from "./hook/useStageDataList";
 import ImageItem, { ImageItemProps } from "./view/object/image";
-import useSelection from "./hook/useSelection";
+import useSmartSelection from "./hook/useSmartSelection";
 import useTab from "./hook/useTab";
-import useTransformer from "./hook/useTransformer";
 import useStage from "./hook/useStage";
 import useTool from "./hook/useTool";
 import TextItem, { TextItemProps } from "./view/object/text";
@@ -30,10 +29,7 @@ import LineItem, { LineItemProps } from "./view/object/line";
 import SeatItem, { SeatItemProps } from "./view/object/seat";
 import useModal from "./hook/useModal";
 import useSeatDrawing from "./hook/useSeatDrawing";
-import useRowEdit from "./hook/useRowEdit";
-import { SeatDrawMode } from "./types/seat";
 import hotkeyList from "./config/hotkey.json";
-import RowEditor from "./view/RowEditor";
 import useHotkeyFunc from "./hook/useHotkeyFunc";
 import useWorkHistory from "./hook/useWorkHistory";
 import useI18n from "./hook/usei18n";
@@ -49,6 +45,10 @@ export type FileKind = {
 
 export type FileData = Record<string, FileKind>;
 
+// 工具模式类型
+type ToolMode = 'select' | 'draw-rect' | 'draw-ellipse' | 'draw-polygon' | 
+                'seat-row' | 'seat-section' | 'seat-section-diagonal';
+
 function App() {
   const [past, setPast] = useState<StageData[][]>([]);
   const [future, setFuture] = useState<StageData[][]>([]);
@@ -58,13 +58,26 @@ function App() {
     setPast,
     setFuture,
   );
-  const transformer = useTransformer();
-  const { selectedItems, onSelectItem, setSelectedItems, clearSelection }
-    = useSelection(transformer);
-  const { tabList, onClickTab, onCreateTab, onDeleteTab, moveTab } = useTab(transformer, clearHistory);
-  const { stageData } = useItem();
-  const { stageDataList, initializeFileDataList, updateFileData } = useStageDataList();
+  
+  // 使用新的智能选择 hook
   const stage = useStage();
+  const {
+    selection,
+    selectedNodes,
+    isMarqueeSelecting,
+    marqueeBox,
+    handleSelect,
+    startMarquee,
+    updateMarquee,
+    endMarquee,
+    clearSelection,
+    getTransformerConfig,
+    getSelectionCursor,
+  } = useSmartSelection({ stageRef: stage.stageRef });
+  
+  const { tabList, onClickTab, onCreateTab, onDeleteTab, moveTab } = useTab(clearHistory);
+  const { stageData, updateItem } = useItem();
+  const { stageDataList, initializeFileDataList, updateFileData } = useStageDataList();
   const modal = useModal();
   const {
     deleteItems,
@@ -81,6 +94,9 @@ function App() {
   const [clipboard, setClipboard] = useState<StageData[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
+  // 当前工具模式
+  const [toolMode, setToolMode] = useState<ToolMode>('select');
+
   // 统一绘制工具 Hook
   const {
     drawMode,
@@ -89,13 +105,12 @@ function App() {
     polygonTempPoint,
     startDrawMode,
     exitDrawMode,
-    getCursor: getDrawCursor,
-    onMouseDown,
-    onMouseMove,
-    onMouseUp,
+    isDrawing,
+    onMouseDown: onDrawMouseDown,
+    onMouseMove: onDrawMouseMove,
+    onMouseUp: onDrawMouseUp,
     onDoubleClick,
     onContextMenu,
-    isDrawing,
   } = useDrawTools();
   
   // 座位绘制工具 Hook
@@ -104,33 +119,15 @@ function App() {
     previewSeats,
     startPoint: seatStartPoint,
     currentRowLabel,
-    sectionConfig,
     drawStep,
-    firstRowEnd,
     startSeatMode,
     exitSeatMode,
-    setCurrentRowLabel,
-    setSectionConfig,
     onMouseDown: onSeatMouseDown,
     onMouseMove: onSeatMouseMove,
-    getCursor: getSeatCursor,
   } = useSeatDrawing();
 
-  // 行编辑工具 Hook
-  const {
-    rowEditMode,
-    selectedRow,
-    startRowEdit,
-    exitRowEdit,
-    selectRowBySeat,
-    addSeatToStart,
-    addSeatToEnd,
-    removeSeatFromStart,
-    removeSeatFromEnd,
-    rotateRow,
-    moveRow,
-    getRowCursor,
-  } = useRowEdit();
+  // 根据工具状态判断是否在绘制模式
+  const isInDrawingMode = drawMode !== 'idle' || seatDrawMode !== 'idle';
 
   const createStageDataObject = (item: Node<NodeConfig>): StageData => {
     const { id } = item.attrs;
@@ -145,16 +142,6 @@ function App() {
     };
   };
 
-  const { getClickCallback } = useTool(
-    stage,
-    modal,
-    selectedItems,
-    setSelectedItems,
-    transformer,
-    createStageDataObject,
-    onSelectItem,
-  );
-
   const currentTabId = useMemo(() => tabList.find((tab) => tab.active)?.id ?? null, [tabList]);
 
   // 自动保存功能
@@ -163,7 +150,6 @@ function App() {
     exportToFile,
     importFromFile,
     clearSavedData,
-    isAutoSaveEnabled,
   } = useAutoSave(stageDataList, stageData, currentTabId);
 
   const sortedStageData = useMemo(
@@ -180,121 +166,63 @@ function App() {
     [stageData],
   );
 
-  const header = (
-    <Header>
-      <TabGroup
-        onClickTab={onClickTab}
-        tabList={tabList}
-        onCreateTab={onCreateTab}
-        onDeleteTab={onDeleteTab}
-      />
-      {/* 绘制模式指示器 */}
-      {isDrawing && (
-        <div
-          style={{
-            position: 'absolute',
-            right: '20px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            padding: '4px 12px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-          }}
-        >
-          {drawMode === 'rectangle' && '📐 绘制矩形中...'}
-          {drawMode === 'ellipse' && '⭕ 绘制椭圆中...'}
-          {drawMode === 'polygon' && `⬡ 绘制多边形中... (${polygonPoints.length} 点)`}
-          {seatDrawMode === 'row-straight' && '🎯 行座位模式'}
-          {seatDrawMode === 'section' && (
-            drawStep === 'second' ? '↗️ 有角度行：确定第一段' :
-            drawStep === 'third' ? '↗️ 有角度行：确定第二段方向' :
-            '↗️ 有角度行：点击起点'
-          )}
-          {seatDrawMode === 'section-diagonal' && (
-            drawStep === 'second' ? '📐 多行区块：确定第一行方向' :
-            drawStep === 'third' ? '📐 多行区块：确定行排列方向和数量' :
-            '📐 多行区块：点击起点'
-          )}
-          {drawMode === 'idle' && seatDrawMode === 'idle' && '选择模式'}
-          <button
-            onClick={() => {
-              exitDrawMode();
-              exitSeatMode();
-            }}
-            style={{
-              marginLeft: '8px',
-              background: 'none',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-      {/* 三点式绘制配置面板 */}
-      {(seatDrawMode === 'section' || seatDrawMode === 'section-diagonal') && (
-        <div
-          style={{
-            position: 'absolute',
-            right: '20px',
-            top: 'calc(50% + 50px)',
-            transform: 'translateY(-50%)',
-            backgroundColor: 'white',
-            color: '#333',
-            padding: '12px 16px',
-            borderRadius: '8px',
-            fontSize: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            minWidth: '160px',
-          }}
-        >
-          <div style={{ marginBottom: '10px', fontWeight: 'bold', borderBottom: '1px solid #eee', paddingBottom: '6px' }}>
-            {seatDrawMode === 'section' ? '有角度行' : '多行区块'}
-          </div>
-          
-          {/* 步骤指示 */}
-          <div style={{ marginBottom: '12px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-            <div style={{ 
-              color: drawStep === 'idle' || drawStep === 'first' ? '#4CAF50' : '#999',
-              fontWeight: drawStep === 'idle' || drawStep === 'first' ? 'bold' : 'normal',
-              marginBottom: '4px'
-            }}>
-              ① 点击确定起点
-            </div>
-            <div style={{ 
-              color: drawStep === 'second' ? '#4CAF50' : '#999',
-              fontWeight: drawStep === 'second' ? 'bold' : 'normal',
-              marginBottom: '4px'
-            }}>
-              {seatDrawMode === 'section' ? '② 确定第一段方向' : '② 确定第一行方向'}
-            </div>
-            <div style={{ 
-              color: drawStep === 'third' ? '#4CAF50' : '#999',
-              fontWeight: drawStep === 'third' ? 'bold' : 'normal'
-            }}>
-              {seatDrawMode === 'section' ? '③ 确定第二段方向' : '③ 确定行排列方向和数量'}
-            </div>
-          </div>
-
-          {seatDrawMode === 'section-diagonal' && (
-            <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '11px', color: '#666' }}>
-              每行座位数由第1、2点距离自动计算
-            </div>
-          )}
-          
-          <div style={{ marginTop: '10px', fontSize: '11px', color: '#999', lineHeight: '1.4' }}>
-            按 ESC 取消当前绘制
-          </div>
-        </div>
-      )}
-    </Header>
-  );
+  // 处理工具切换
+  const handleToolClick = useCallback((clickedId: string) => {
+    console.log("Button clicked:", clickedId);
+    
+    // 先退出所有绘制模式
+    if (drawMode !== 'idle') {
+      exitDrawMode();
+    }
+    if (seatDrawMode !== 'idle') {
+      exitSeatMode();
+    }
+    
+    // 切换到选择模式
+    setToolMode('select');
+    
+    // 处理具体工具
+    switch (clickedId) {
+      case 'draw-rectangle':
+        setToolMode('draw-rect');
+        startDrawMode('rectangle');
+        break;
+      case 'draw-ellipse':
+        setToolMode('draw-ellipse');
+        startDrawMode('ellipse');
+        break;
+      case 'draw-polygon':
+        setToolMode('draw-polygon');
+        startDrawMode('polygon');
+        break;
+      case 'seat-row':
+        setToolMode('seat-row');
+        startSeatMode('row-straight');
+        break;
+      case 'seat-section':
+        setToolMode('seat-section');
+        startSeatMode('section');
+        break;
+      case 'seat-section-diagonal':
+        setToolMode('seat-section-diagonal');
+        startSeatMode('section-diagonal');
+        break;
+      case 'export-json':
+        exportToFile();
+        break;
+      case 'import-json':
+        handleImportFile();
+        break;
+      case 'clear-data':
+        handleClearData();
+        break;
+      default:
+        // 其他工具暂未实现
+        console.log("Tool not implemented:", clickedId);
+        break;
+    }
+  }, [drawMode, seatDrawMode, exitDrawMode, exitSeatMode, startDrawMode, startSeatMode, 
+      exportToFile]);
 
   // 处理导入文件
   const handleImportFile = () => {
@@ -333,23 +261,109 @@ function App() {
 
   // 检查按钮是否处于激活状态
   const isButtonActive = (data: any): boolean => {
-    // 形状绘制工具
     if (data["sub-button"]) {
       return data["sub-button"].some((sub: any) => {
-        if (sub.id === 'draw-rectangle') return drawMode === 'rectangle';
-        if (sub.id === 'draw-ellipse') return drawMode === 'ellipse';
-        if (sub.id === 'draw-polygon') return drawMode === 'polygon';
-        if (sub.id === 'seat-row') return seatDrawMode === 'row-straight';
-        if (sub.id === 'seat-section') return seatDrawMode === 'section';
-        if (sub.id === 'seat-section-diagonal') return seatDrawMode === 'section-diagonal';
+        if (sub.id === 'draw-rectangle') return toolMode === 'draw-rect';
+        if (sub.id === 'draw-ellipse') return toolMode === 'draw-ellipse';
+        if (sub.id === 'draw-polygon') return toolMode === 'draw-polygon';
+        if (sub.id === 'seat-row') return toolMode === 'seat-row';
+        if (sub.id === 'seat-section') return toolMode === 'seat-section';
+        if (sub.id === 'seat-section-diagonal') return toolMode === 'seat-section-diagonal';
         return false;
       });
     }
-    // 行编辑按钮
-    if (data.id === 'row-edit') return rowEditMode === 'editing';
-    // 单独按钮
     return false;
   };
+
+  const header = (
+    <Header>
+      <TabGroup
+        onClickTab={onClickTab}
+        tabList={tabList}
+        onCreateTab={onCreateTab}
+        onDeleteTab={onDeleteTab}
+      />
+      {/* 绘制模式指示器 */}
+      {isInDrawingMode && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '20px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+          }}
+        >
+          {toolMode === 'draw-rect' && '📐 绘制矩形中...'}
+          {toolMode === 'draw-ellipse' && '⭕ 绘制椭圆中...'}
+          {toolMode === 'draw-polygon' && `⬡ 绘制多边形中... (${polygonPoints.length} 点)`}
+          {toolMode === 'seat-row' && '🎯 行座位模式'}
+          {toolMode === 'seat-section' && '↗️ 有角度行模式'}
+          {toolMode === 'seat-section-diagonal' && '📐 多行区块模式'}
+          <button
+            onClick={() => {
+              setToolMode('select');
+              exitDrawMode();
+              exitSeatMode();
+            }}
+            style={{
+              marginLeft: '8px',
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {/* 三点式绘制配置面板 */}
+      {(toolMode === 'seat-section' || toolMode === 'seat-section-diagonal') && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '20px',
+            top: 'calc(50% + 50px)',
+            transform: 'translateY(-50%)',
+            backgroundColor: 'white',
+            color: '#333',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            minWidth: '160px',
+          }}
+        >
+          <div style={{ marginBottom: '10px', fontWeight: 'bold', borderBottom: '1px solid #eee', paddingBottom: '6px' }}>
+            {toolMode === 'seat-section' ? '有角度行' : '多行区块'}
+          </div>
+          
+          <div style={{ marginBottom: '12px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+            <div style={{ color: '#4CAF50', fontWeight: 'bold', marginBottom: '4px' }}>
+              ① 点击确定起点
+            </div>
+            <div style={{ color: '#4CAF50', fontWeight: 'bold', marginBottom: '4px' }}>
+              ② 确定方向
+            </div>
+            <div style={{ color: '#4CAF50', fontWeight: 'bold' }}>
+              ③ 完成绘制
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '10px', fontSize: '11px', color: '#999', lineHeight: '1.4' }}>
+            按 ESC 取消当前绘制
+          </div>
+        </div>
+      )}
+    </Header>
+  );
 
   const navBar = (
     <NavBar>
@@ -359,58 +373,7 @@ function App() {
           data={data}
           stage={stage}
           isActive={isButtonActive(data)}
-          onClick={(clickedId: string) => {
-            console.log("Button clicked:", clickedId);
-            
-            // 如果已经在绘制模式，先退出
-            if (isDrawing) {
-              exitDrawMode();
-            }
-            if (seatDrawMode !== 'idle') {
-              exitSeatMode();
-            }
-            
-            // 处理绘制工具
-            if (clickedId === 'draw-rectangle') {
-              console.log("开始矩形绘制模式");
-              startDrawMode('rectangle');
-            } else if (clickedId === 'draw-ellipse') {
-              console.log("开始椭圆绘制模式");
-              startDrawMode('ellipse');
-            } else if (clickedId === 'draw-polygon') {
-              console.log("开始多边形绘制模式");
-              startDrawMode('polygon');
-            } else if (clickedId === 'seat-row') {
-              console.log("开始行座位绘制模式");
-              startSeatMode('row-straight');
-            } else if (clickedId === 'seat-section') {
-              console.log("开始区块座位绘制模式");
-              startSeatMode('section');
-            } else if (clickedId === 'seat-section-diagonal') {
-              console.log("开始对角区块绘制模式");
-              startSeatMode('section-diagonal');
-            } else if (clickedId === 'export-json') {
-              console.log("导出数据到 JSON");
-              exportToFile();
-            } else if (clickedId === 'import-json') {
-              console.log("从 JSON 导入数据");
-              handleImportFile();
-            } else if (clickedId === 'clear-data') {
-              console.log("清除保存的数据");
-              handleClearData();
-            } else if (clickedId === 'row-edit') {
-              console.log("切换行编辑模式");
-              if (rowEditMode === 'idle') {
-                startRowEdit();
-              } else {
-                exitRowEdit();
-              }
-            } else {
-              // 其他工具使用原有逻辑
-              const callback = getClickCallback(clickedId);
-              callback();
-            }
-          }}
+          onClick={handleToolClick}
         />
       ))}
     </NavBar>
@@ -443,20 +406,58 @@ function App() {
 
   const settingBar = (
     <SettingBar
-      selectedItems={selectedItems}
+      selectedItems={selectedNodes}
       clearSelection={clearSelection}
       stageRef={stage.stageRef}
     />
   );
 
+  // 处理 TransformEnd - 批量更新选中对象
+  const handleTransformEnd = useCallback((e: KonvaEventObject<Event>) => {
+    const target = e.target;
+    if (!target) return;
+
+    // 如果选中的是单行或多行，批量更新所有座位
+    if (selection.type === 'row' || selection.type === 'multi-row') {
+      selectedNodes.forEach((node) => {
+        updateItem(node.id(), () => ({
+          ...node.attrs,
+          x: node.x(),
+          y: node.y(),
+          rotation: node.rotation(),
+          scaleX: node.scaleX(),
+          scaleY: node.scaleY(),
+          updatedAt: Date.now(),
+        }));
+      });
+    } else {
+      // 单个对象更新
+      updateItem(target.id(), () => ({
+        ...target.attrs,
+        x: target.x(),
+        y: target.y(),
+        rotation: target.rotation(),
+        scaleX: target.scaleX(),
+        scaleY: target.scaleY(),
+        updatedAt: Date.now(),
+      }));
+    }
+    
+    target.getStage()?.batchDraw();
+  }, [selection.type, selectedNodes, updateItem]);
+
   const renderObject = (item: StageData) => {
+    const commonProps = {
+      onSelect: handleSelect,
+    };
+
     switch (item.attrs["data-item-type"]) {
       case "frame":
         return (
           <Frame
             key={`frame-${item.id}`}
             data={item as FrameProps["data"]}
-            onSelect={onSelectItem}
+            {...commonProps}
           />
         );
       case "image":
@@ -464,7 +465,7 @@ function App() {
           <ImageItem
             key={`image-${item.id}`}
             data={item as ImageItemProps["data"]}
-            onSelect={onSelectItem}
+            {...commonProps}
           />
         );
       case "text":
@@ -472,8 +473,7 @@ function App() {
           <TextItem
             key={`text-${item.id}`}
             data={item as TextItemProps["data"]}
-            transformer={transformer}
-            onSelect={onSelectItem}
+            {...commonProps}
           />
         );
       case "shape":
@@ -481,8 +481,7 @@ function App() {
           <ShapeItem
             key={`shape-${item.id}`}
             data={item as ShapeItemProps["data"]}
-            transformer={transformer}
-            onSelect={onSelectItem}
+            {...commonProps}
           />
         );
       case "icon":
@@ -490,8 +489,7 @@ function App() {
           <IconItem
             key={`icon-${item.id}`}
             data={item as IconItemProps["data"]}
-            transformer={transformer}
-            onSelect={onSelectItem}
+            {...commonProps}
           />
         );
       case "line":
@@ -499,8 +497,7 @@ function App() {
           <LineItem
             key={`line-${item.id}`}
             data={item as LineItemProps["data"]}
-            transformer={transformer}
-            onSelect={onSelectItem}
+            {...commonProps}
           />
         );
       case "seat":
@@ -508,42 +505,7 @@ function App() {
           <SeatItem
             key={`seat-${item.id}`}
             data={item as SeatItemProps["data"]}
-            transformer={transformer}
-            onSelect={(e) => {
-              if (rowEditMode === 'editing') {
-                // 行编辑模式：用 Transformer 选中整行所有座位
-                if (e) e.cancelBubble = true;
-                
-                const rowNumber = item.attrs.rowNumber as string;
-                
-                // 获取 stage 实例
-                const stageInstance = stage.stageRef.current;
-                if (!stageInstance || !transformer.transformerRef.current) return;
-                
-                // 清空当前选择
-                transformer.transformerRef.current.nodes([]);
-                
-                // 查找所有座位节点，筛选出当前行的
-                const allSeats = stageInstance.find('.label-target');
-                const rowNodes = allSeats.filter(node => {
-                  // 检查节点的 rowNumber 属性是否匹配
-                  return node.attrs['rowNumber'] === rowNumber;
-                }) as Node<NodeConfig>[];
-                
-                // 用 Transformer 选中整行所有座位
-                transformer.transformerRef.current.nodes(rowNodes);
-                
-                // 配置行编辑模式：只允许左右拉伸，保留旋转手柄
-                transformer.transformerRef.current.enabledAnchors(['middle-left', 'middle-right']);
-                transformer.transformerRef.current.rotateEnabled(true);
-                transformer.transformerRef.current.update();
-                
-                setSelectedItems(rowNodes);
-              } else {
-                // 普通模式：正常选择
-                onSelectItem(e);
-              }
-            }}
+            {...commonProps}
           />
         );
       default:
@@ -551,115 +513,33 @@ function App() {
     }
   };
 
-  useHotkeys(
-    "shift+up",
-    (e) => {
-      e.preventDefault();
-      layerUp(selectedItems);
-    },
-    {},
-    [selectedItems],
-  );
-
-  useHotkeys(
-    "shift+down",
-    (e) => {
-      e.preventDefault();
-      layerDown(selectedItems);
-    },
-    {},
-    [selectedItems],
-  );
-
-  useHotkeys(
-    "ctrl+d",
-    (e) => {
-      e.preventDefault();
-      duplicateItems(selectedItems, createStageDataObject);
-    },
-    {},
-    [selectedItems, stageData],
-  );
-
-  useHotkeys(
-    "ctrl+c",
-    (e) => {
-      e.preventDefault();
-      copyItems(selectedItems, setClipboard, createStageDataObject);
-    },
-    {},
-    [selectedItems, stageData, clipboard],
-  );
-
-  useHotkeys(
-    "ctrl+a",
-    (e) => {
-      e.preventDefault();
-      selectAll(stage, onSelectItem);
-    },
-    {},
-    [selectedItems],
-  );
-
-  useHotkeys(
-    "ctrl+v",
-    (e) => {
-      e.preventDefault();
-      pasteItems(clipboard);
-    },
-    {},
-    [clipboard],
-  );
-
-  useHotkeys(
-    "ctrl+z",
-    (e) => {
-      e.preventDefault();
-      goToPast();
-    },
-    {},
-    [goToPast],
-  );
-
-  useHotkeys(
-    "ctrl+y",
-    (e) => {
-      e.preventDefault();
-      goToFuture();
-    },
-    {},
-    [goToFuture],
-  );
-
-  useHotkeys(
-    "shift+h",
-    (e) => {
-      e.preventDefault();
-      flipHorizontally(selectedItems);
-    },
-    {},
-    [selectedItems],
-  );
-
-  useHotkeys(
-    "shift+v",
-    (e) => {
-      e.preventDefault();
-      flipVertically(selectedItems);
-    },
-    {},
-    [selectedItems],
-  );
-
-  useHotkeys(
-    "backspace",
-    (e) => {
-      e.preventDefault();
-      deleteItems(selectedItems, setSelectedItems, transformer.transformerRef);
-    },
-    { enabled: Boolean(selectedItems.length) },
-    [selectedItems, transformer.transformerRef.current],
-  );
+  // 快捷键
+  useHotkeys("shift+up", (e) => { e.preventDefault(); layerUp(selectedNodes); }, {}, [selectedNodes]);
+  useHotkeys("shift+down", (e) => { e.preventDefault(); layerDown(selectedNodes); }, {}, [selectedNodes]);
+  useHotkeys("ctrl+d", (e) => { e.preventDefault(); duplicateItems(selectedNodes, createStageDataObject); }, {}, [selectedNodes, stageData]);
+  useHotkeys("ctrl+c", (e) => { e.preventDefault(); copyItems(selectedNodes, setClipboard, createStageDataObject); }, {}, [selectedNodes, stageData, clipboard]);
+  useHotkeys("ctrl+a", (e) => { e.preventDefault(); selectAll(stage, handleSelect as any); }, {}, [selectedNodes]);
+  useHotkeys("ctrl+v", (e) => { e.preventDefault(); pasteItems(clipboard); }, {}, [clipboard]);
+  useHotkeys("ctrl+z", (e) => { e.preventDefault(); goToPast(); }, {}, [goToPast]);
+  useHotkeys("ctrl+y", (e) => { e.preventDefault(); goToFuture(); }, {}, [goToFuture]);
+  useHotkeys("shift+h", (e) => { e.preventDefault(); flipHorizontally(selectedNodes); }, {}, [selectedNodes]);
+  useHotkeys("shift+v", (e) => { e.preventDefault(); flipVertically(selectedNodes); }, {}, [selectedNodes]);
+  useHotkeys("backspace", (e) => {
+    e.preventDefault();
+    // 这里需要传入 transformer ref，暂时简化处理
+    deleteItems(selectedNodes, clearSelection, { current: null });
+  }, { enabled: Boolean(selectedNodes.length) }, [selectedNodes]);
+  
+  // ESC 退出绘制模式
+  useHotkeys("esc", () => {
+    if (isInDrawingMode) {
+      setToolMode('select');
+      exitDrawMode();
+      exitSeatMode();
+    } else {
+      clearSelection();
+    }
+  }, {}, [isInDrawingMode, exitDrawMode, exitSeatMode, clearSelection]);
 
   useEffect(() => {
     window.addEventListener("beforeunload", (e) => {
@@ -670,15 +550,21 @@ function App() {
     // 尝试从 localStorage 加载保存的数据
     const savedData = loadData();
     if (savedData && savedData.stageDataList.length > 0) {
-      console.log("[App] 从 localStorage 加载保存的数据");
-      initializeFileDataList(savedData.stageDataList);
-      // 恢复上次活动的标签页
-      if (savedData.currentTabId) {
-        const tabToActivate = savedData.stageDataList.find(
-          (tab) => tab.id === savedData.currentTabId,
-        );
-        if (tabToActivate) {
-          moveTab(savedData.currentTabId, tabToActivate);
+      const hasValidData = savedData.stageDataList.some(item => item.data && item.data.length > 0);
+      if (!hasValidData) {
+        console.log("[App] localStorage 数据为空，使用默认初始数据");
+        onCreateTab(undefined, initialStageDataList[0] as StageDataListItem);
+        initializeFileDataList(initialStageDataList);
+      } else {
+        console.log("[App] 从 localStorage 加载保存的数据");
+        initializeFileDataList(savedData.stageDataList);
+        if (savedData.currentTabId) {
+          const tabToActivate = savedData.stageDataList.find(
+            (tab) => tab.id === savedData.currentTabId,
+          );
+          if (tabToActivate && tabToActivate.id !== savedData.stageDataList[savedData.stageDataList.length - 1]?.id) {
+            moveTab(savedData.currentTabId, tabToActivate);
+          }
         }
       }
     } else {
@@ -688,11 +574,13 @@ function App() {
     }
 
     setIsDataLoaded(true);
-    stage.stageRef.current.setPosition({
-      x: Math.max(Math.ceil(stage.stageRef.current.width() - 1280) / 2, 0),
-      y: Math.max(Math.ceil(stage.stageRef.current.height() - 760) / 2, 0),
-    });
-    stage.stageRef.current.batchDraw();
+    if (stage.stageRef.current) {
+      stage.stageRef.current.setPosition({
+        x: Math.max(Math.ceil(stage.stageRef.current.width() - 1280) / 2, 0),
+        y: Math.max(Math.ceil(stage.stageRef.current.height() - 760) / 2, 0),
+      });
+      stage.stageRef.current.batchDraw();
+    }
   }, []);
 
   useEffect(() => {
@@ -705,11 +593,22 @@ function App() {
     recordPast(stageData);
   }, [stageData]);
 
+  // 获取 Transformer 配置
+  const transformerConfig = useMemo(() => {
+    return getTransformerConfig(selection.type);
+  }, [selection.type, getTransformerConfig]);
+
+  // 判断是否需要显示 Transformer
+  const showTransformer = selection.type !== 'none' && selectedNodes.length > 0;
+
   return (
     <Layout header={header} navBar={navBar} settingBar={settingBar}>
       {hotkeyModal}
       <View 
-        onSelect={onSelectItem} 
+        onSelect={handleSelect}
+        onMarqueeStart={startMarquee}
+        onMarqueeMove={updateMarquee}
+        onMarqueeEnd={endMarquee}
         stage={stage}
         drawMode={drawMode}
         seatDrawMode={seatDrawMode}
@@ -718,23 +617,28 @@ function App() {
         seatStartPoint={seatStartPoint}
         polygonPoints={polygonPoints}
         polygonTempPoint={polygonTempPoint}
-        onDrawMouseDown={seatDrawMode !== 'idle' ? onSeatMouseDown : onMouseDown}
-        onDrawMouseMove={seatDrawMode !== 'idle' ? onSeatMouseMove : onMouseMove}
-        onDrawMouseUp={seatDrawMode !== 'idle' ? undefined : onMouseUp}
+        onDrawMouseDown={seatDrawMode !== 'idle' ? onSeatMouseDown : onDrawMouseDown}
+        onDrawMouseMove={seatDrawMode !== 'idle' ? onSeatMouseMove : onDrawMouseMove}
+        onDrawMouseUp={seatDrawMode !== 'idle' ? undefined : onDrawMouseUp}
         onDrawDoubleClick={onDoubleClick}
         onDrawContextMenu={onContextMenu}
-        cursor={seatDrawMode !== 'idle' ? 'crosshair' : rowEditMode === 'editing' ? 'move' : 'default'}
+        cursor={isInDrawingMode ? 'crosshair' : getSelectionCursor(selection.type)}
+        isMarqueeSelecting={isMarqueeSelecting}
+        marqueeBox={marqueeBox}
+        hasSelection={selection.type !== 'none'}
       >
         {stageData.length ? sortedStageData.map((item) => renderObject(item)) : null}
         
-        
-        <Transformer
-          ref={transformer.transformerRef}
-          keepRatio
-          shouldOverdrawWholeArea
-          boundBoxFunc={(_, newBox) => newBox}
-          onTransformEnd={transformer.onTransformEnd}
-        />
+        {/* 动态 Transformer */}
+        {showTransformer && (
+          <Transformer
+            nodes={selectedNodes}
+            keepRatio
+            shouldOverdrawWholeArea
+            {...transformerConfig}
+            onTransformEnd={handleTransformEnd}
+          />
+        )}
       </View>
     </Layout>
   );

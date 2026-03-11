@@ -2,26 +2,25 @@ import React, { useState } from "react";
 import { StageDataListItem } from "../redux/stageDataList";
 import { TabKind } from "../tab/Tab";
 import useLocalStorage from "./useLocalStorage";
-import useSelection from "./useSelection";
 import useStageDataList from "./useStageDataList";
-import useTransformer from "./useTransformer";
 import useWorkHistory from "./useWorkHistory";
 
 export const TAB_ID = "tabId";
 
 const useTab = (
-  transformer: ReturnType<typeof useTransformer>,
   clearHistory: ReturnType<typeof useWorkHistory>["clearHistory"],
+  clearSelection?: () => void,
 ) => {
   const [tabList, setTabList] = useState<TabKind[]>([]);
   const { createFileData, removeFileData, changeStageData } = useStageDataList();
-  const { clearSelection } = useSelection(transformer);
   const { setValue } = useLocalStorage();
+  
+  const clearSel = clearSelection || (() => {});
 
   const onClickTab = (e: React.MouseEvent<HTMLAnchorElement>) => {
     const currentActiveFileId = e.currentTarget.dataset.fileId;
     const prevFileId = tabList.find((tab) => tab.active)?.id;
-    clearSelection();
+    clearSel();
 
     changeStageData(prevFileId!, currentActiveFileId!);
     setTabList((prev) =>
@@ -36,7 +35,7 @@ const useTab = (
 
   const moveTab = (tabId: string, fileItem?: StageDataListItem) => {
     const prevFileId = tabList.find((tab) => tab.active)?.id;
-    clearSelection();
+    clearSel();
 
     changeStageData(prevFileId!, tabId!, fileItem?.data ?? undefined);
     setTabList((prev) =>
@@ -54,14 +53,14 @@ const useTab = (
       = fileItem?.id
       ?? `file-${tabList.length === 0 ? 1 : parseInt(tabList[tabList.length - 1].id.slice(5)) + 1}`;
     const prevTabId = tabList.find((_tab) => _tab.active)?.id;
-    clearSelection();
+    clearSel();
     createFileData(
       fileItem ?? {
         id: newTabId,
         data: [],
       },
     );
-    changeStageData(prevTabId ?? newTabId, newTabId);
+    changeStageData(prevTabId ?? newTabId, newTabId, fileItem?.data);
     setTabList((prev) => [
       ...Object.values(prev).map((tab, index) => ({
         ...tab,
@@ -88,7 +87,7 @@ const useTab = (
       = tabList[tabIndex].id === currentTab!.id
         ? tabList[tabIndex === 0 ? tabIndex + 1 : tabIndex - 1].id
         : currentTab!.id;
-    clearSelection();
+    clearSel();
     removeFileData(tabId);
     changeStageData(nextTabId, nextTabId);
     setTabList((prev) => [

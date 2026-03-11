@@ -76,12 +76,6 @@
     "icon": "people"
   },
   {
-    "id": "row-edit",
-    "name": "Row Edit",
-    "desc": "Edit seat rows",
-    "icon": "row"
-  },
-  {
     "id": "flip-horizontally",
     "name": "Flip Horizontally",
     "desc": "Flip Horizontally",

@@ -3,7 +3,7 @@ import { KonvaEventObject } from "konva/lib/Node";
 import React, { RefObject, useCallback, useRef } from "react";
 import { Text as KonvaText } from "react-konva";
 import useItem, { OverrideItemProps } from "../../../hook/useItem";
-import useTransformer from "../../../hook/useTransformer";
+
 import { StageData } from "../../../redux/currentStageData";
 
 export type TextItemKind = {
@@ -19,11 +19,9 @@ export type TextItemKind = {
 
 export type TextItemProps = OverrideItemProps<{
   data: StageData;
-  transformer: ReturnType<typeof useTransformer>;
-  e?: DragEvent;
 }>;
 
-const TextItem: React.FC<TextItemProps> = ({ data, e, transformer, onSelect }) => {
+const TextItem: React.FC<TextItemProps> = ({ data, onSelect }) => {
   const { attrs } = data;
 
   const textRef = useRef() as RefObject<Konva.Text>;
@@ -35,7 +33,8 @@ const TextItem: React.FC<TextItemProps> = ({ data, e, transformer, onSelect }) =
       return;
     }
     textRef.current.hide();
-    transformer.transformerRef.current!.hide();
+    // TODO: 需要在选中时获取 transformer 引用来隐藏
+    // transformer.transformerRef.current!.hide();
     const textPosition = textRef.current.getAbsolutePosition();
     const stage = textRef.current.getStage();
     const container = stage!.container().getBoundingClientRect();
@@ -107,7 +106,8 @@ const TextItem: React.FC<TextItemProps> = ({ data, e, transformer, onSelect }) =
     function removeTextarea() {
       window.removeEventListener("click", handleOutsideClick);
       textRef!.current!.show();
-      transformer.transformerRef.current!.show();
+      // TODO: 需要在选中时获取 transformer 引用来显示
+      // transformer.transformerRef.current!.show();
       updateItem(textRef.current!.id(), () => ({
         ...textRef.current!.attrs,
         width: textarea.getBoundingClientRect().width / stage!.scaleY() / textRef.current!.scaleY(),

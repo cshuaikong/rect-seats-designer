@@ -4,7 +4,7 @@ import { Rect as RectType } from "konva/lib/shapes/Rect";
 import React, { RefObject, useEffect, useRef } from "react";
 import { Ellipse, Rect, RegularPolygon } from "react-konva";
 import { OverrideItemProps } from "../../../hook/useItem";
-import useTransformer from "../../../hook/useTransformer";
+
 import { StageData } from "../../../redux/currentStageData";
 import useDragAndDrop from "../../../hook/useDragAndDrop";
 import useStage from "../../../hook/useStage";
@@ -21,11 +21,9 @@ export type ShapeItemKind = {
 
 export type ShapeItemProps = OverrideItemProps<{
   data: StageData;
-  transformer: ReturnType<typeof useTransformer>;
-  e?: DragEvent;
 }>;
 
-const ShapeItem: React.FC<ShapeItemProps> = ({ data, e, transformer, onSelect }) => {
+const ShapeItem: React.FC<ShapeItemProps> = ({ data, onSelect }) => {
   const { attrs } = data;
 
   const shapeRef = useRef() as RefObject<RegularPolygonType | RectType | EllipseType>;

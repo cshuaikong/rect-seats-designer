@@ -5,7 +5,7 @@ import { Shape as ShapeType, ShapeConfig } from "konva/lib/Shape";
 import React, { RefObject, useCallback, useRef } from "react";
 import { Group, Shape } from "react-konva";
 import useItem, { OverrideItemProps } from "../../../hook/useItem";
-import useTransformer from "../../../hook/useTransformer";
+
 import { StageData } from "../../../redux/currentStageData";
 
 export type LineItemKind = {
@@ -20,11 +20,9 @@ export type LineItemKind = {
 
 export type LineItemProps = OverrideItemProps<{
   data: StageData;
-  transformer: ReturnType<typeof useTransformer>;
-  e?: DragEvent;
 }>;
 
-const LineItem: React.FC<LineItemProps> = ({ data, e, transformer, onSelect }) => {
+const LineItem: React.FC<LineItemProps> = ({ data, onSelect }) => {
   const {
     attrs: { updatedAt, zIndex, points, ...attrs },
   } = data;

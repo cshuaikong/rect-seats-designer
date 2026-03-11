@@ -5,12 +5,13 @@ import { Node, NodeConfig, KonvaEventObject } from "konva/lib/Node";
 import { PreviewRect, DrawToolMode } from "../hook/useDrawTools";
 import { SeatDrawMode, SeatData, defaultSeatMapConfig } from "../types/seat";
 import { Circle as SeatCircle, Text as SeatText } from "react-konva";
+import { SelectionType, Box } from "../hook/useSmartSelection";
 
 interface ViewProps extends PropsWithChildren {
-  onSelect?: (
-    e?: KonvaEventObject<MouseEvent>,
-    itemList?: Node<NodeConfig>[],
-  ) => void;
+  onSelect?: (e: KonvaEventObject<MouseEvent>) => void;
+  onMarqueeStart?: (e: KonvaEventObject<MouseEvent>) => void;
+  onMarqueeMove?: (e: KonvaEventObject<MouseEvent>) => void;
+  onMarqueeEnd?: () => void;
   stage: { stageRef: React.MutableRefObject<any> },
   drawMode: DrawToolMode;
   seatDrawMode?: SeatDrawMode;
@@ -25,10 +26,16 @@ interface ViewProps extends PropsWithChildren {
   onDrawDoubleClick?: (e: KonvaEventObject<MouseEvent>) => void;
   onDrawContextMenu?: (e: KonvaEventObject<MouseEvent>) => void;
   cursor?: string;
+  isMarqueeSelecting?: boolean;
+  marqueeBox?: Box | null;
+  hasSelection?: boolean;
 }
 
 export default function View({
   onSelect,
+  onMarqueeStart,
+  onMarqueeMove,
+  onMarqueeEnd,
   children,
   stage,
   drawMode,
@@ -44,19 +51,21 @@ export default function View({
   onDrawDoubleClick,
   onDrawContextMenu,
   cursor = 'default',
+  isMarqueeSelecting = false,
+  marqueeBox = null,
+  hasSelection = false,
 }: ViewProps) {
   const { stageRef } = stage;
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const dragCurrentRef = useRef<{ x: number; y: number } | null>(null);
   
   // 鼠标位置（用于座位绘制工具的跟随预览）
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
+  
   const stageConfig = useMemo(
     () => ({
       width: Math.max(window.innerWidth - 410, 1280),
       height: Math.max(window.innerHeight - 140, 760),
-      draggable: drawMode === 'idle' && seatDrawMode === 'idle',
+      draggable: false, // 关闭 Stage 拖动，只使用 Transformer 拖动对象
       x: Math.max(Math.ceil(window.innerWidth - 410 - 1280) / 2, 0),
       y: Math.max(Math.ceil(window.innerHeight - 140 - 760) / 2, 0),
       scale: {
@@ -64,8 +73,9 @@ export default function View({
         y: 1,
       },
     }),
-    [drawMode, seatDrawMode],
+    [drawMode, seatDrawMode, isMarqueeSelecting],
   );
+
   const wheelEventHandler = (e: WheelEvent) => {
     e.preventDefault();
     const scaleBy = 1.1;
@@ -114,11 +124,20 @@ export default function View({
       return;
     }
 
-    // 普通选择模式
-    if (target === _stage) {
+    // 选择模式
+    const isStage = target === _stage;
+    const isLayer = target.getType() === 'Layer';
+    
+    if (isStage || isLayer) {
+      // 点击空白区域 -> 开始框选
+      if (onMarqueeStart) {
+        onMarqueeStart(e);
+      }
+    } else {
+      // 点击对象 -> 选择（不启动框选）
       onSelect?.(e);
     }
-  }, [drawMode, seatDrawMode, onDrawMouseDown, onSelect, stage]);
+  }, [drawMode, seatDrawMode, onDrawMouseDown, onSelect, onMarqueeStart]);
 
   const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
     // 座位绘制模式：更新鼠标位置用于预览圆圈跟随
@@ -139,16 +158,27 @@ export default function View({
       return;
     }
     
+    // 框选模式
+    if (isMarqueeSelecting && onMarqueeMove) {
+      onMarqueeMove(e);
+      return;
+    }
+    
     if (drawMode !== 'idle' && onDrawMouseMove) {
       onDrawMouseMove(e);
     }
-  }, [drawMode, seatDrawMode, onDrawMouseMove]);
+  }, [drawMode, seatDrawMode, isMarqueeSelecting, onDrawMouseMove, onMarqueeMove]);
 
   const handleMouseUp = useCallback(() => {
+    if (isMarqueeSelecting && onMarqueeEnd) {
+      onMarqueeEnd();
+      return;
+    }
+    
     if ((drawMode !== 'idle' || seatDrawMode !== 'idle') && onDrawMouseUp) {
       onDrawMouseUp();
     }
-  }, [drawMode, seatDrawMode, onDrawMouseUp]);
+  }, [drawMode, seatDrawMode, isMarqueeSelecting, onDrawMouseUp, onMarqueeEnd]);
 
   const handleDoubleClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if ((drawMode !== 'idle' || seatDrawMode !== 'idle') && onDrawDoubleClick) {
@@ -195,7 +225,6 @@ export default function View({
     
     // 渲染已有点
     polygonPoints.forEach((point, index) => {
-      // 顶点标记
       elements.push(
         <Rect
           key={`polygon-point-${index}`}
@@ -216,7 +245,6 @@ export default function View({
       for (let i = 0; i < polygonPoints.length; i++) {
         linePoints.push(polygonPoints[i].x, polygonPoints[i].y);
       }
-      // 添加临时点形成最后一条线
       if (polygonTempPoint) {
         linePoints.push(polygonTempPoint.x, polygonTempPoint.y);
       }
@@ -235,6 +263,25 @@ export default function View({
     return elements;
   }, [polygonPoints, polygonTempPoint]);
 
+  // 渲染框选框
+  const renderMarqueeBox = useMemo(() => {
+    if (!isMarqueeSelecting || !marqueeBox) return null;
+
+    return (
+      <Rect
+        x={marqueeBox.x}
+        y={marqueeBox.y}
+        width={marqueeBox.width}
+        height={marqueeBox.height}
+        fill="rgba(0, 150, 255, 0.1)"
+        stroke="#0096FF"
+        strokeWidth={1}
+        dash={[4, 4]}
+        listening={false}
+      />
+    );
+  }, [isMarqueeSelecting, marqueeBox]);
+
   return (
     <div className="position-relative" ref={containerRef}>
       <Stage
@@ -242,7 +289,7 @@ export default function View({
         style={{
           background: "#f5f5f5",
           overflow: "hidden",
-          cursor: cursor,
+          cursor: isMarqueeSelecting ? 'crosshair' : cursor,
         }}
         ref={stageRef}
         {...stageConfig}
@@ -253,6 +300,9 @@ export default function View({
         onContextMenu={handleContextMenu}
       >
         <Layer>
+          {/* 框选框 */}
+          {renderMarqueeBox}
+
           {/* 拖拽预览 - 矩形 */}
           {previewRect && drawMode === 'rectangle' && previewRect.visible && (
             <Rect
@@ -304,8 +354,7 @@ export default function View({
             </>
           )}
           
-          {/* 座位绘制工具 - 鼠标跟随预览圆圈（首位座位颜色） */}
-          {/* 仅在未开始绘制时显示（seatStartPoint 为 null） */}
+          {/* 座位绘制工具 - 鼠标跟随预览圆圈 */}
           {seatDrawMode !== 'idle' && mousePosition && !seatStartPoint && (
             <SeatCircle
               x={mousePosition.x}
@@ -337,7 +386,7 @@ export default function View({
                 listening={false}
               />
               
-              {/* 预览座位 - 首位边框#0985FA，中间边框#0E64C8，填充#D2EDFE */}
+              {/* 预览座位 */}
               {previewSeats.map((seat, index) => (
                 <SeatCircle
                   key={`preview-seat-circle-${seat.id}`}

@@ -3,13 +3,11 @@ import { Circle as CircleType } from 'konva/lib/shapes/Circle';
 import { Circle, Text, Group } from 'react-konva';
 import { KonvaEventObject } from 'konva/lib/Node';
 import useItem, { OverrideItemProps } from '../../../hook/useItem';
-import useTransformer from '../../../hook/useTransformer';
 import { StageData } from '../../../redux/currentStageData';
 import { SeatStatus, defaultSeatMapConfig } from '../../../types/seat';
 
 export type SeatItemProps = OverrideItemProps<{
   data: StageData;
-  transformer: ReturnType<typeof useTransformer>;
 }>;
 
 const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
@@ -35,6 +33,8 @@ const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
   const seatColor = fill || '#9E9E9E';
   
   const handleClick = (e: KonvaEventObject<MouseEvent>) => {
+    // 阻止事件冒泡，避免触发 Stage 的点击
+    e.cancelBubble = true;
     if (onSelect) {
       onSelect(e);
     }
@@ -55,33 +55,32 @@ const SeatItem: React.FC<SeatItemProps> = ({ data, onSelect }) => {
   };
   
   return (
-    <Group>
+    <Group x={attrs.x} y={attrs.y}>
+      {/* 主座位圆形 - 包含所有属性和事件 */}
       <Circle
         ref={seatRef}
         onClick={handleClick}
+        onTap={handleClick}
         onDblClick={handleDblClick}
+        onDblTap={handleDblClick}
         name="label-target"
         data-item-type="seat"
         id={data.id}
-        x={attrs.x}
-        y={attrs.y}
+        x={0}
+        y={0}
         radius={radius}
         fill={seatColor}
         stroke={stroke || '#444444'}
         strokeWidth={strokeWidth || 1}
-        draggable
-        onDragEnd={(e) => {
-          updateItem(data.id, () => ({
-            ...attrs,
-            x: e.target.x(),
-            y: e.target.y(),
-            updatedAt: Date.now(),
-          }));
-        }}
+        rowNumber={rowNumber}
+        seatNumber={seatNumber}
+        perfectDrawEnabled={false}
+        listening={true}
       />
+      {/* 文字 - 不监听事件 */}
       <Text
-        x={attrs.x - radius}
-        y={attrs.y - radius}
+        x={-radius}
+        y={-radius}
         width={radius * 2}
         height={radius * 2}
         text={String(seatNumber)}
